@@ -1,0 +1,551 @@
+---
+title: OS2L Plugin
+description: Open Show 2 Light protocol for third-party software integration
+---
+
+## Overview
+
+The OS2L (Open Show 2 Light) plugin enables QLC+ to receive control commands from third-party show control software over a TCP network connection. OS2L is designed specifically for integration with professional show control systems like Depence², Capture, Realizzer, and similar visualization software.
+
+<Note>
+The plugin name as reported by QLC+ is **"OS2L"**
+</Note>
+
+## Capabilities
+
+The OS2L plugin supports:
+
+- **Input** - Receive commands from show control software
+- **Infinite** - Unlimited channels through hash-based mapping
+
+<Warning>
+OS2L is **input-only**. It receives commands from external software but does not send data out.
+</Warning>
+
+## Protocol Specifications
+
+- **Protocol:** OS2L (TCP-based)
+- **Transport:** TCP (Transmission Control Protocol)
+- **Default Port:** 9996
+- **Connection:** Server mode (QLC+ listens for connections)
+- **Message Format:** Text-based commands
+
+```cpp
+#define OS2L_DEFAULT_PORT 9996
+```
+
+## Architecture
+
+OS2L operates as a TCP server:
+
+```cpp
+class OS2LPlugin : public QLCIOPlugin
+{
+    QTcpServer *m_tcpServer;      // TCP server for incoming connections
+    quint16 m_hostPort;           // Port to listen on
+    quint32 m_inputUniverse;      // QLC+ universe for input
+};
+```
+
+### Connection Flow
+
+<Steps>
+  <Step title="QLC+ starts TCP server">
+    Plugin creates TCP server listening on configured port
+  </Step>
+  <Step title="Show control software connects">
+    External software initiates TCP connection to QLC+ IP and port
+  </Step>
+  <Step title="Commands received">
+    QLC+ receives OS2L text commands over TCP connection
+  </Step>
+  <Step title="Commands processed">
+    Plugin parses commands and updates channel values
+  </Step>
+  <Step title="Connection maintained">
+    TCP connection remains open for continuous communication
+  </Step>
+</Steps>
+
+## Configuration
+
+### Custom Parameters
+
+```cpp
+#define OS2L_HOST_ADDRESS "hostAddress"  // Not used (server mode)
+#define OS2L_HOST_PORT    "hostPort"     // Port to listen on
+```
+
+### Setting Port
+
+```cpp
+setParameter(universe, line, Input, "hostPort", 9996);
+```
+
+### Network Configuration
+
+**Server setup:**
+- QLC+ listens on all network interfaces (0.0.0.0)
+- Default port: 9996
+- Single client connection at a time
+
+**Client (show control software) must:**
+- Connect to QLC+ computer's IP address
+- Use configured port (default 9996)
+- Send OS2L text commands
+
+## Input Configuration
+
+### Opening Input
+
+```cpp
+bool openInput(quint32 input, quint32 universe);
+```
+
+When input is opened:
+1. Plugin creates TCP server
+2. Binds to configured port
+3. Starts listening for connections
+
+```cpp
+bool enableTCPServer(bool enable);
+```
+
+### Connection Management
+
+```cpp
+protected slots:
+    void slotProcessNewTCPConnection();  // New client connected
+    void slotHostDisconnected();         // Client disconnected
+    void slotProcessTCPPackets();        // Process incoming data
+```
+
+**Connection lifecycle:**
+1. Client connects → `slotProcessNewTCPConnection()`
+2. Data arrives → `slotProcessTCPPackets()`
+3. Client disconnects → `slotHostDisconnected()`
+
+<Note>
+Only one client can connect at a time. If a new client connects, the previous connection is closed.
+</Note>
+
+## OS2L Command Format
+
+OS2L uses text-based commands:
+
+```
+/{category}/{command} {parameters}
+```
+
+### Common Commands
+
+**Cue control:**
+```
+/cue/fire {cue_number}
+/cue/release {cue_number}
+/cue/toggle {cue_number}
+```
+
+**Channel control:**
+```
+/channel/{name} {value}
+/channel/{name}/fade {value} {time_ms}
+```
+
+**Show control:**
+```
+/show/go
+/show/stop  
+/show/pause
+```
+
+**Examples:**
+```
+/cue/fire 1.5           // Fire cue 1.5
+/channel/dimmer1 255    // Set dimmer1 to full
+/channel/red/fade 128 2000  // Fade red to 50% over 2 seconds
+/show/go                // Go to next cue
+```
+
+<Accordion title="Command syntax rules">
+- Commands start with `/`
+- Categories and commands are case-sensitive
+- Parameters separated by spaces
+- No quotes needed for single-word parameters
+- Newline terminates command
+</Accordion>
+
+## Channel Mapping
+
+OS2L uses hash-based channel mapping:
+
+```cpp
+QHash<QString, quint16> m_hashMap;  // Command string to channel number
+quint16 getHash(QString channel);   // Calculate 16-bit hash
+```
+
+### How Hashing Works
+
+1. **Command received:** `/channel/dimmer1 255`
+2. **Extract channel name:** `dimmer1`
+3. **Calculate hash:** 16-bit checksum of string
+4. **Map to channel:** Hash value becomes QLC+ channel number
+5. **Store mapping:** Save in hash map for future lookups
+6. **Emit value:** `valueChanged(universe, input, channel, value)`
+
+### Hash Benefits
+
+<CardGroup cols={2}>
+  <Card title="Unlimited Channels" icon="infinity">
+    Any number of uniquely-named channels
+  </Card>
+  <Card title="Human-Readable" icon="font">
+    Use descriptive names like "stage_left_dimmer"
+  </Card>
+  <Card title="No Pre-Configuration" icon="wand-magic-sparkles">
+    Channels auto-created on first use
+  </Card>
+  <Card title="Consistent Mapping" icon="link">
+    Same name always maps to same channel
+  </Card>
+</CardGroup>
+
+<Warning>
+Hash collisions are possible (two different names producing same hash), but rare with 16-bit space. Use distinctive channel names to minimize risk.
+</Warning>
+
+## Packet Processing
+
+OS2L handles fragmented packets:
+
+```cpp
+QByteArray m_packetLeftOver;  // Buffer for incomplete packets
+```
+
+### Packet Assembly
+
+1. **Data arrives** via TCP socket
+2. **Append to buffer** - Concatenate with any leftover data
+3. **Find complete commands** - Split on newlines
+4. **Process commands** - Parse and execute each command
+5. **Store remainder** - Keep incomplete command in buffer
+
+**Example:**
+```
+Packet 1: "/cue/fire 1\n/ch"
+Packet 2: "annel/dim1 255\n"
+
+Buffer after packet 1: "/ch" (leftover)
+Buffer after packet 2: "" (complete)
+
+Commands executed:
+  /cue/fire 1
+  /channel/dim1 255
+```
+
+This ensures commands split across TCP packets are handled correctly.
+
+## Use Cases
+
+### Visualization Software
+
+<Tabs>
+  <Tab title="Depence²">
+    **Depence²** - Professional 3D visualization
+    
+    **Integration:**
+    - Configure Depence² to send OS2L commands
+    - Set QLC+ IP and port 9996
+    - Map Depence² channels to OS2L commands
+    
+    **Benefits:**
+    - Pre-visualize lighting before programming
+    - Real-time visualization during show
+    - Export cue lists to QLC+
+  </Tab>
+  <Tab title="Capture">
+    **Capture** - Lighting design visualization
+    
+    **Integration:**
+    - Enable OS2L output in Capture
+    - Point to QLC+ IP address
+    - Use port 9996
+    
+    **Benefits:**
+    - Design lighting in 3D
+    - Test without hardware
+    - Document installations
+  </Tab>
+  <Tab title="Realizzer">
+    **Realizzer 3D** - Real-time rendering
+    
+    **Integration:**
+    - Configure OS2L protocol
+    - Set QLC+ as target
+    - Map outputs accordingly
+    
+    **Benefits:**
+    - Photorealistic rendering
+    - Client presentations  
+    - Virtual venue testing
+  </Tab>
+</Tabs>
+
+### Timeline Software
+
+OS2L enables timeline-based control:
+
+**Applications:**
+- **Chamsys MagicQ** - Professional console
+- **GrandMA2/3** - High-end control
+- **Custom software** - DIY show control
+
+**Example workflow:**
+1. Design show in timeline software
+2. Program cues and sequences
+3. Timeline sends OS2L commands to QLC+
+4. QLC+ executes lighting changes
+
+### Custom Integration
+
+OS2L's simple text format makes custom integration easy:
+
+**Python example:**
+```python
+import socket
+
+# Connect to QLC+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect(('192.168.1.100', 9996))
+
+# Send commands
+sock.send(b"/cue/fire 1\n")
+sock.send(b"/channel/dimmer1 255\n")
+
+sock.close()
+```
+
+**Node.js example:**
+```javascript
+const net = require('net');
+
+const client = new net.Socket();
+client.connect(9996, '192.168.1.100', () => {
+  client.write('/cue/fire 1\n');
+  client.write('/channel/dimmer1 255\n');
+});
+
+client.on('close', () => {
+  console.log('Connection closed');
+});
+```
+
+## Network Configuration
+
+### Firewall Settings
+
+**Allow incoming TCP connections:**
+
+```bash
+# Linux (iptables)
+sudo iptables -A INPUT -p tcp --dport 9996 -j ACCEPT
+
+# Linux (firewalld)
+sudo firewall-cmd --permanent --add-port=9996/tcp
+sudo firewall-cmd --reload
+
+# Windows (PowerShell)
+New-NetFirewallRule -DisplayName "OS2L" -Direction Inbound -Protocol TCP -LocalPort 9996 -Action Allow
+```
+
+### Network Topology
+
+<CardGroup cols={2}>
+  <Card title="Same Computer" icon="laptop">
+    **Configuration:**
+    - Connect to 127.0.0.1 (localhost)
+    - Port 9996
+    
+    **Use case:** Running visualization software on same machine as QLC+
+  </Card>
+  <Card title="Local Network" icon="network-wired">
+    **Configuration:**
+    - Connect to QLC+ computer's IP (e.g., 192.168.1.100)
+    - Port 9996
+    - Ensure same subnet
+    
+    **Use case:** Separate computers for control and visualization
+  </Card>
+</CardGroup>
+
+### Finding QLC+ IP Address
+
+**Windows:**
+```cmd
+ipconfig
+```
+
+**Linux/macOS:**
+```bash
+ifconfig
+# or
+ip addr show
+```
+
+Look for IPv4 address (e.g., 192.168.1.100)
+
+## Troubleshooting
+
+### Connection Refused
+
+<AccordionGroup>
+  <Accordion title="Check input is opened">
+    Verify OS2L input line is opened in QLC+ (universe patched)
+  </Accordion>
+  <Accordion title="Verify port number">
+    Ensure client software uses same port as QLC+ (default 9996)
+  </Accordion>
+  <Accordion title="Check firewall">
+    Temporarily disable firewall to test, then configure proper rules
+  </Accordion>
+  <Accordion title="Verify IP address">
+    Ensure client connects to correct IP (not 0.0.0.0, but actual IP)
+  </Accordion>
+</AccordionGroup>
+
+### No Data Received
+
+1. **Verify connection established** - Check if TCP connection succeeded
+2. **Monitor network traffic** - Use Wireshark to see if data is sent
+3. **Check command format** - Ensure commands match OS2L syntax
+4. **Test with telnet:**
+   ```bash
+   telnet 192.168.1.100 9996
+   /cue/fire 1
+   ```
+5. **Check QLC+ logs** - Enable debug logging for plugin
+
+### Commands Not Working
+
+1. **Verify command syntax** - OS2L commands are case-sensitive
+2. **Check newlines** - Each command must end with `\n`
+3. **Test simple command** - Try `/channel/test 255\n`
+4. **Monitor QLC+ channels** - Check if channels are updating
+5. **Verify universe mapping** - Ensure input universe is patched
+
+### Connection Drops
+
+<Steps>
+  <Step title="Check network stability">
+    Verify stable network connection between computers
+  </Step>
+  <Step title="Disable power management">
+    Network adapters may sleep - disable power saving
+  </Step>
+  <Step title="Use wired connection">
+    Wireless can be unreliable - prefer Ethernet
+  </Step>
+  <Step title="Implement reconnection">
+    Client software should handle reconnection on disconnect
+  </Step>
+</Steps>
+
+## Performance Considerations
+
+### TCP vs UDP
+
+OS2L uses TCP for reliability:
+
+**Advantages:**
+- Guaranteed delivery
+- Ordered packets
+- Connection-oriented
+- Suitable for show control commands
+
+**Disadvantages:**
+- Higher latency than UDP
+- Connection overhead
+- Not suitable for real-time DMX streaming
+
+<Note>
+For real-time DMX streaming, use [Art-Net](/plugins/artnet) or [E1.31](/plugins/e131-sacn) instead. OS2L is designed for **command-based control**, not DMX universe streaming.
+</Note>
+
+### Message Rate
+
+OS2L can handle high message rates:
+- **Low priority:** 1-10 commands/sec
+- **Normal:** 10-50 commands/sec
+- **High:** 100+ commands/sec
+
+But keep in mind:
+- QLC+ must process each command
+- Channel updates take time
+- Too many commands can cause lag
+
+### Buffer Management
+
+The plugin manages packet buffering:
+```cpp
+QByteArray m_packetLeftOver;  // Typically small (<1KB)
+```
+
+Large command backlogs indicate:
+- Commands sent too fast
+- QLC+ processing bottleneck
+- Network issues
+
+## Protocol Extensions
+
+While OS2L is not formally standardized, common extensions:
+
+### Feedback (Not Supported)
+
+Some software expects feedback:
+```
+/ack/{command_id}
+/status/{parameter} {value}
+```
+
+QLC+'s OS2L plugin does **not** send feedback (input-only).
+
+### Extended Commands
+
+You can define custom commands:
+```
+/custom/macro/1
+/user/scene/bedroom
+/special/effect/strobe 10
+```
+
+These will be hashed to unique channels.
+
+## Alternative Protocols
+
+If OS2L doesn't meet your needs:
+
+<CardGroup cols={2}>
+  <Card title="OSC" icon="wave-square" href="/plugins/osc">
+    More flexible, bidirectional, UDP-based
+  </Card>
+  <Card title="Art-Net" icon="network-wired" href="/plugins/artnet">
+    Real-time DMX streaming over Ethernet
+  </Card>
+  <Card title="E1.31" icon="network-wired" href="/plugins/e131-sacn">
+    Standardized DMX streaming protocol
+  </Card>
+</CardGroup>
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="OSC Plugin" icon="wave-square" href="/plugins/osc">
+    Open Sound Control protocol
+  </Card>
+  <Card title="Art-Net" icon="network-wired" href="/plugins/artnet">
+    DMX over Ethernet
+  </Card>
+  <Card title="Plugin Overview" icon="plug" href="/plugins/overview">
+    Learn about the plugin architecture
+  </Card>
+</CardGroup>

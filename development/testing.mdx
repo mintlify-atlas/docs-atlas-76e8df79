@@ -1,0 +1,629 @@
+---
+title: Testing QLC+
+description: Guide to running and writing unit tests for QLC+
+---
+
+QLC+ uses Qt Test framework for unit testing. All code changes must pass the test suite before being merged.
+
+## Running Tests
+
+### Quick Start
+
+<Warning>
+Before submitting any pull request, you **must** run `make check` and ensure all tests pass.
+</Warning>
+
+```bash
+# From the build directory
+make check
+```
+
+This runs the complete test suite including:
+- Engine unit tests
+- UI unit tests (if X server available)
+- Plugin tests
+- Fixture definition validation
+
+### Manual Test Execution
+
+The `unittest.sh` script orchestrates all tests (unittest.sh:1):
+
+```bash
+# Run tests for QtWidgets UI
+./unittest.sh ui build/
+
+# Run tests for QML UI
+./unittest.sh qmlui build/
+```
+
+### CMake Test Targets
+
+<CodeGroup>
+```bash All Tests
+make check        # Run complete test suite
+make unittests    # Run unit tests only (no fixture validation)
+```
+
+```bash Coverage
+make coverage     # Generate coverage report (Linux/macOS)
+make lcov        # Same as coverage
+```
+</CodeGroup>
+
+The CMake configuration (CMakeLists.txt:92-116) defines these targets:
+
+```cmake
+if(qmlui)
+    add_custom_target(unittests
+        COMMAND ./unittest.sh "qmlui" ${CMAKE_CURRENT_BINARY_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+else()
+    add_custom_target(unittests
+        COMMAND ./unittest.sh "ui" ${CMAKE_CURRENT_BINARY_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+endif()
+
+add_custom_target(check
+    DEPENDS unittests
+)
+```
+
+## Test Suite Structure
+
+### Test Organization
+
+Tests are organized by component:
+
+```
+engine/test/
+├── bus/                    # Bus tests
+├── channelmodifier/        # Channel modifier tests
+├── channelsgroup/          # Channel groups tests
+├── chaser/                 # Chaser function tests
+├── chaserrunner/          # Chaser runner tests
+├── collection/            # Collection function tests
+├── doc/                   # Document tests
+├── efx/                   # EFX function tests
+├── fixture/               # Fixture tests
+├── function/              # Base function tests
+├── rgbmatrix/             # RGB matrix tests
+└── scene/                 # Scene function tests
+
+ui/test/
+├── virtualconsole/        # Virtual console tests
+├── simpledesk/           # Simple desk tests
+└── ...
+
+plugins/*/test/            # Plugin-specific tests
+├── artnet/test/
+├── midi/test/
+├── enttecwing/test/
+└── velleman/test/
+```
+
+### Test Execution Flow
+
+The `platforms/linux/unittest.sh` script (platforms/linux/unittest.sh:1) coordinates test execution:
+
+<Steps>
+  <Step title="Fixture Validation">
+    ```bash
+    # Validate all .qxf files with xmllint
+    pushd resources/fixtures/scripts
+    ./check
+    ```
+    
+    Ensures all fixture definitions are valid XML.
+  </Step>
+
+  <Step title="Engine Tests">
+    ```bash
+    # Find and run all engine tests
+    TESTDIR=engine/test
+    TESTS=$(find ${TESTDIR} -maxdepth 1 -mindepth 1 -type d)
+    for test in ${TESTS}; do
+        pushd ${TESTDIR}/${test}
+        ./test.sh
+        popd
+    done
+    ```
+    
+    Each test directory contains a `test.sh` script.
+  </Step>
+
+  <Step title="UI Tests">
+    ```bash
+    # Run UI tests if X server available
+    if [ "$RUN_UI_TESTS" -eq "1" ]; then
+        TESTDIR=ui/test
+        # Run each UI test
+    fi
+    ```
+    
+    UI tests require a running X server or `xvfb-run`.
+  </Step>
+
+  <Step title="Plugin Tests">
+    ```bash
+    # Test specific plugins
+    pushd plugins/enttecwing/test
+    ./test.sh
+    popd
+    
+    pushd plugins/midi/test
+    ./test.sh
+    popd
+    
+    pushd plugins/artnet/test
+    ./test.sh
+    popd
+    ```
+  </Step>
+</Steps>
+
+## Continuous Integration
+
+### Headless Testing
+
+On CI servers, tests run with `xvfb-run` (platforms/linux/unittest.sh:16-29):
+
+```bash
+if [ "$CURRUSER" == "runner" ] \
+    || [ "$CURRUSER" == "buildbot" ] \
+    || [ "$CURRUSER" == "abuild" ]; then
+    
+    TESTPREFIX="QT_QPA_PLATFORM=minimal xvfb-run --auto-servernum"
+    RUN_UI_TESTS="1"
+    SLEEPCMD="sleep 1"
+fi
+```
+
+This enables running UI tests without a physical display.
+
+### GitHub Actions
+
+The project uses GitHub Actions for CI (README.md:23-24):
+
+```yaml
+# .github/workflows/build.yml
+- Build and test on Linux, Windows, macOS
+- Run complete test suite
+- Generate coverage reports
+```
+
+## Writing Tests
+
+### Test Structure
+
+QLC+ uses Qt Test framework. Example test structure:
+
+```cpp
+#include <QtTest>
+#include "doc.h"
+#include "fixture.h"
+
+class FixtureTest : public QObject
+{
+    Q_OBJECT
+
+private slots:
+    void initTestCase();
+    void cleanupTestCase();
+    void init();
+    void cleanup();
+    
+    // Test cases
+    void testInitial();
+    void testID();
+    void testName();
+    void testUniverse();
+    void testAddress();
+    void testChannels();
+    
+private:
+    Doc* m_doc;
+};
+
+void FixtureTest::initTestCase()
+{
+    m_doc = new Doc(this);
+}
+
+void FixtureTest::cleanupTestCase()
+{
+    delete m_doc;
+}
+
+void FixtureTest::testID()
+{
+    Fixture* fxi = new Fixture(m_doc);
+    fxi->setID(42);
+    QCOMPARE(fxi->id(), quint32(42));
+    delete fxi;
+}
+
+QTEST_MAIN(FixtureTest)
+#include "fixture_test.moc"
+```
+
+### Test Script
+
+Each test directory needs a `test.sh` script:
+
+```bash
+#!/bin/bash
+
+# Set library path
+export LD_LIBRARY_PATH=../../src:../../../engine/src
+
+# Run the test
+./mytest_test
+
+# Return test result
+exit $?
+```
+
+### CMakeLists.txt for Tests
+
+Example test CMake configuration:
+
+```cmake
+set(TEST_NAME mytest_test)
+
+add_executable(${TEST_NAME}
+    mytest_test.cpp
+    ${TEST_NAME}.h
+)
+
+target_link_libraries(${TEST_NAME}
+    Qt${QT_VERSION_MAJOR}::Test
+    qlcplusengine
+)
+
+add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+```
+
+## Test Requirements
+
+### Resource Setup
+
+Tests need access to resources (unittest.sh:12-23):
+
+```bash
+# Copy resources for testing
+cp -r $SOURCE_DIR/resources/colorfilters $DEST_DIR/resources
+cp -r $SOURCE_DIR/resources/fixtures $DEST_DIR/resources
+cp -r $SOURCE_DIR/resources/gobos $DEST_DIR/resources
+cp -r $SOURCE_DIR/resources/icons $DEST_DIR/resources
+cp -r $SOURCE_DIR/resources/inputprofiles $DEST_DIR/resources
+cp -r $SOURCE_DIR/resources/rgbscripts $DEST_DIR/resources
+cp -r $SOURCE_DIR/resources/schemas $DEST_DIR/resources
+```
+
+The test setup script handles this automatically.
+
+### Test Data Files
+
+Many tests use XML files for test data (unittest.sh:26-36):
+
+```bash
+# Find and copy test XML files
+for file in $(find $SOURCE_DIR -name "*.xml*"); do
+    dir=$(dirname ${file#./})
+    mkdir -p $DEST_DIR/$dir
+    cp $file $DEST_DIR/$dir/
+done
+```
+
+## Coverage Reports
+
+### Generating Coverage
+
+<Info>
+Coverage reporting is available on Linux and macOS only.
+</Info>
+
+```bash
+make coverage
+```
+
+The `coverage.sh` script:
+1. Rebuilds with coverage flags
+2. Runs all tests
+3. Generates lcov HTML report
+4. Opens report in browser
+
+### Viewing Coverage
+
+Coverage badge on GitHub (README.md:25-26):
+
+```markdown
+[![Coverage](https://coveralls.io/repos/github/mcallegari/qlcplus/badge.svg?branch=master)]
+```
+
+## Best Practices
+
+### Test Coverage
+
+<AccordionGroup>
+  <Accordion title="What to Test">
+    - Public API methods
+    - Edge cases and boundary conditions
+    - Error handling
+    - State transitions
+    - XML loading/saving
+  </Accordion>
+
+  <Accordion title="What Not to Test">
+    - Private implementation details
+    - Qt framework functionality
+    - Third-party libraries
+    - Platform-specific code (use mocks)
+  </Accordion>
+</AccordionGroup>
+
+### Writing Good Tests
+
+<Steps>
+  <Step title="One concept per test">
+    Each test method should verify one specific behavior:
+    
+    ```cpp
+    void testFixtureID();      // Only tests ID getter/setter
+    void testFixtureName();    // Only tests name getter/setter
+    ```
+  </Step>
+
+  <Step title="Use descriptive names">
+    ```cpp
+    // Good
+    void testAddFixtureWithInvalidId();
+    void testRemoveFixtureEmitsSignal();
+    
+    // Bad
+    void test1();
+    void testFixture();
+    ```
+  </Step>
+
+  <Step title="Arrange-Act-Assert pattern">
+    ```cpp
+    void testAddFixture()
+    {
+        // Arrange
+        Fixture* fxi = new Fixture(m_doc);
+        
+        // Act
+        bool result = m_doc->addFixture(fxi);
+        
+        // Assert
+        QCOMPARE(result, true);
+        QCOMPARE(m_doc->fixturesCount(), 1);
+    }
+    ```
+  </Step>
+
+  <Step title="Clean up resources">
+    Use `cleanup()` or smart pointers:
+    
+    ```cpp
+    void cleanup()
+    {
+        m_doc->clearContents();
+    }
+    ```
+  </Step>
+</Steps>
+
+### Qt Test Macros
+
+<CodeGroup>
+```cpp Comparisons
+QCOMPARE(actual, expected);    // Test equality
+QVERIFY(condition);            // Test boolean condition
+QVERIFY2(condition, message);  // With custom message
+```
+
+```cpp Floating Point
+QCOMPARE_EQ(actual, expected);       // Qt 6.0+
+QFUZZY_COMPARE(actual, expected);    // Floating point
+```
+
+```cpp Exceptions
+QTRY_VERIFY(condition);        // Retry until timeout
+QTRY_COMPARE(actual, expected); // Retry comparison
+```
+
+```cpp Data-Driven Tests
+void testFunction_data();
+void testFunction();
+
+QTEST_MAIN(MyTest)
+```
+</CodeGroup>
+
+## Debugging Failed Tests
+
+### Running Individual Tests
+
+Run a specific test directly:
+
+```bash
+cd build/engine/test/fixture
+export LD_LIBRARY_PATH=../../src
+./fixture_test
+```
+
+### Verbose Output
+
+```bash
+# Qt Test verbosity levels
+./fixture_test -v1    # Silent
+./fixture_test -v2    # Normal (default)
+./fixture_test -vs    # Verbose
+```
+
+### Running Specific Test Functions
+
+```bash
+# Run only one test function
+./fixture_test testID
+
+# Run multiple functions
+./fixture_test testID testName
+```
+
+### Debug with GDB
+
+```bash
+export LD_LIBRARY_PATH=../../src
+gdb ./fixture_test
+(gdb) run
+```
+
+## Platform-Specific Considerations
+
+### Linux
+
+- Tests require X server or `xvfb-run`
+- Use `QT_QPA_PLATFORM=minimal` for headless
+- Install xvfb: `sudo apt-get install xvfb`
+
+### macOS
+
+Tests run normally if logged in (platforms/linux/unittest.sh:31-33):
+
+```bash
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "We're on OSX. Any prefix needed?"
+fi
+```
+
+### Windows
+
+Use `unittest.bat` instead of `unittest.sh` (CMakeLists.txt:105-109):
+
+```cmake
+if(WIN32)
+   add_custom_target(unittests
+        COMMAND unittest.bat "ui" ${CMAKE_CURRENT_BINARY_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+endif()
+```
+
+## Troubleshooting
+
+### Missing Resources
+
+If tests fail with "file not found":
+
+```bash
+# From source root
+./unittest.sh ui build/
+```
+
+This ensures resources are copied correctly.
+
+### Library Loading Errors
+
+Set `LD_LIBRARY_PATH` correctly:
+
+```bash
+export LD_LIBRARY_PATH=path/to/build/engine/src:path/to/build/ui/src
+```
+
+### UI Tests Skipped
+
+UI tests are skipped if no X server detected (platforms/linux/unittest.sh:38-45):
+
+```bash
+# Check for X server
+XPID=$(pidof X)
+if [ ${#XPID} -gt 0 ]; then
+    RUN_UI_TESTS="1"
+fi
+```
+
+Use `xvfb-run` for headless testing.
+
+### Test Timeout
+
+Increase test timeout in CMakeLists.txt:
+
+```cmake
+set_tests_properties(mytest_test PROPERTIES TIMEOUT 300)
+```
+
+## Integration with Development
+
+### Pre-Commit Testing
+
+<Warning>
+Always run `make check` before committing changes.
+</Warning>
+
+Consider using a pre-commit hook:
+
+```bash
+#!/bin/bash
+# .git/hooks/pre-commit
+
+cd build
+make check
+if [ $? -ne 0 ]; then
+    echo "Tests failed. Commit aborted."
+    exit 1
+fi
+```
+
+### CI Integration
+
+GitHub Actions automatically runs tests on:
+- Every push
+- Every pull request
+- Multiple platforms simultaneously
+
+## Contributing Test Code
+
+### When to Add Tests
+
+<AccordionGroup>
+  <Accordion title="New Features">
+    Add tests for all new functionality:
+    - Public API methods
+    - State changes
+    - Error conditions
+  </Accordion>
+
+  <Accordion title="Bug Fixes">
+    Add a test that:
+    1. Reproduces the bug
+    2. Fails before the fix
+    3. Passes after the fix
+  </Accordion>
+
+  <Accordion title="Refactoring">
+    Ensure existing tests still pass.
+    Add tests for new code paths.
+  </Accordion>
+</AccordionGroup>
+
+### Test Review Criteria
+
+Your tests should:
+- ✓ Be independent (no dependencies between tests)
+- ✓ Be repeatable (same result every time)
+- ✓ Be fast (avoid unnecessary delays)
+- ✓ Test behavior, not implementation
+- ✓ Have clear, descriptive names
+- ✓ Clean up resources properly
+
+## Resources
+
+- [Qt Test Documentation](https://doc.qt.io/qt-5/qtest-overview.html)
+- [Contributing Guidelines](/development/contributing)
+- [Architecture Overview](/development/architecture)
+- [GitHub Actions Workflow](https://github.com/mcallegari/qlcplus/actions)

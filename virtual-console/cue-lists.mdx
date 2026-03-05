@@ -1,0 +1,588 @@
+---
+title: Cue List Widgets
+description: Control sequential show playback with cue list widgets in QLC+
+---
+
+Cue List widgets provide professional show control capabilities in QLC+. They display the steps of a chaser function as a list, allowing step-by-step playback with manual or automatic progression. Cue lists are implemented in `ui/src/virtualconsole/vccuelist.h` and `vccuelist.cpp`.
+
+## Overview
+
+Cue List widgets are designed for theatrical and live show control:
+
+- Display chaser steps in a scrollable list
+- Manual step progression with next/previous buttons
+- Automatic playback with play/pause/stop controls
+- Show step names, numbers, and notes
+- Display progress bar for current step
+- Support crossfade between steps
+- Keyboard shortcuts for hands-free operation
+- External input for lighting console integration
+
+Cue lists are ideal for:
+
+- Theater shows with defined cue sequences
+- Concert lighting with song-based cues
+- Architectural shows with timed sequences
+- Any application requiring precise step control
+
+## Chaser Assignment
+
+Cue lists control chaser functions:
+
+```cpp
+void setChaser(quint32 fid);
+quint32 chaserID() const;
+Chaser *chaser() const;
+```
+
+Source: `vccuelist.h:114-121`
+
+The assigned chaser:
+
+- Provides the list of steps to display
+- Can contain scenes, RGB matrices, or other functions
+- Step order follows chaser configuration
+- Duration and fade times come from chaser steps
+
+<Note>
+Only Chaser functions can be assigned to cue lists. If you need to control a single scene, create a chaser with just that one step.
+</Note>
+
+## Playback Controls
+
+Cue lists provide several control buttons:
+
+### Control Layout
+
+Two layout options are available:
+
+```cpp
+enum PlaybackLayout
+{
+    PlayPauseStop = 0,  // Play/Pause | Stop
+    PlayStopPause       // Play | Stop | Pause
+};
+
+void setPlaybackLayout(PlaybackLayout layout);
+PlaybackLayout playbackLayout() const;
+```
+
+Source: `vccuelist.h:241-251`
+
+Choose based on:
+
+- Personal preference
+- Available space
+- User familiarity
+
+### Playback Button
+
+Start or resume playback:
+
+```cpp
+public slots:
+    void slotPlayback();
+```
+
+Source: `vccuelist.h:172`
+
+Behavior:
+
+- If stopped: Start from current selection
+- If running: Toggle pause
+- If paused: Resume playback
+- Visual indicator shows playback state
+
+### Stop Button
+
+Stop playback completely:
+
+```cpp
+public slots:
+    void slotStop();
+```
+
+Source: `vccuelist.h:175`
+
+Behavior:
+
+- Stops chaser function
+- Maintains current step selection
+- Resets crossfader to default position
+- All lights fade out according to step fade times
+
+### Next/Previous Buttons
+
+Manual step progression:
+
+```cpp
+public slots:
+    void slotNextCue();
+    void slotPreviousCue();
+```
+
+Source: `vccuelist.h:178-181`
+
+Behavior depends on Next/Previous mode setting (see below).
+
+## Next/Previous Behavior
+
+Control what happens when next/previous is pressed:
+
+```cpp
+enum NextPrevBehavior
+{
+    DefaultRunFirst = 0,  // Run first step if stopped, otherwise navigate
+    RunNext,              // Always run the next/previous step
+    Select,               // Only select, don't run
+    Nothing               // Do nothing
+};
+
+void setNextPrevBehavior(NextPrevBehavior nextPrev);
+NextPrevBehavior nextPrevBehavior() const;
+```
+
+Source: `vccuelist.h:233-248`
+
+### DefaultRunFirst
+
+Standard theatrical behavior:
+
+- When stopped: Run first step
+- When running: Run next/previous step
+- Automatic progression to selected step
+
+### RunNext
+
+Always run the step:
+
+- Immediately runs next/previous step
+- Starts playback if stopped
+- Good for "GO" button operation
+
+### Select
+
+Navigation only:
+
+- Highlights next/previous step
+- Doesn't start playback
+- Requires explicit play button press
+- Good for reviewing cues
+
+### Nothing
+
+Disables buttons:
+
+- Next/Previous buttons do nothing
+- Use for automatic-only playback
+- Prevents accidental step changes
+
+## Cue List Display
+
+The main list view shows step information:
+
+```cpp
+private:
+    QTreeWidget *m_tree;
+```
+
+Source: `vccuelist.h:263`
+
+Columns displayed:
+
+1. **Step Number**: Sequential step number (1, 2, 3...)
+2. **Step Name**: Function name or custom label
+3. **Fade In**: Fade in time for the step
+4. **Hold**: Hold duration
+5. **Fade Out**: Fade out time
+6. **Duration**: Total step duration
+7. **Notes**: Custom notes for each step (editable)
+
+### Current Step Indicator
+
+The currently running step is highlighted:
+
+```cpp
+public slots:
+    void slotCurrentStepChanged(int stepNumber);
+```
+
+Source: `vccuelist.h:184`
+
+Visualization:
+
+- Different background color
+- Bold or colored text
+- Auto-scroll to keep current step visible
+- Progress bar shows step completion
+
+### Step Notes
+
+Editable notes for each cue:
+
+```cpp
+public slots:
+    void slotStepNoteChanged(int idx, QString note);
+    
+private slots:
+    void slotItemChanged(QTreeWidgetItem*item, int column);
+
+signals:
+    void stepNoteChanged(int idx, QString note);
+```
+
+Source: `vccuelist.h:187`, `vccuelist.h:212`, `vccuelist.h:412`
+
+Notes can include:
+
+- Cue descriptions ("Lights up", "Spotlight on actor")
+- Timing reminders
+- Technical notes
+- Operator instructions
+
+## Progress Display
+
+Visual feedback for current step:
+
+```cpp
+private:
+    QProgressBar *m_progress;
+    QTimer *m_timer;
+    
+public:
+    int getCurrentIndex() const;
+    QString progressText() const;
+    double progressPercent() const;
+    
+signals:
+    void progressStateChanged();
+
+private slots:
+    void slotProgressTimeout();
+```
+
+Source: `vccuelist.h:124-128`, `vccuelist.h:191`, `vccuelist.h:221`, `vccuelist.h:269`, `vccuelist.h:272`
+
+The progress bar:
+
+- Updates every 200ms
+- Shows percentage of current step completion
+- Displays time remaining
+- Includes fade in/out phases
+
+## Crossfade Control
+
+Manual crossfade between steps:
+
+### Crossfade Mode
+
+```cpp
+enum FaderMode
+{
+    None = 0,
+    Crossfade,  // Crossfade between two steps
+    Steps       // Manual step intensity control
+};
+
+FaderMode sideFaderMode() const;
+void setSideFaderMode(FaderMode mode);
+bool isSideFaderVisible() const;
+```
+
+Source: `vccuelist.h:278-290`
+
+### Crossfade Slider
+
+Manual crossfade control:
+
+```cpp
+protected:
+    QLabel *m_topPercentageLabel;
+    QLabel *m_topStepLabel;
+    ClickAndGoSlider *m_sideFader;
+    QLabel *m_bottomPercentageLabel;
+    QLabel *m_bottomStepLabel;
+    
+public:
+    int sideFaderValue() const;
+    bool primaryTop() const;
+    QString topPercentageValue() const;
+    QString bottomPercentageValue() const;
+    
+public slots:
+    void slotSetSideFaderValue(int value);
+```
+
+Source: `vccuelist.h:292-296`, `vccuelist.h:319-323`, `vccuelist.h:306`
+
+How it works:
+
+1. Select two adjacent steps
+2. Enable crossfade panel
+3. Move slider to fade between steps
+4. Top label shows "primary" step
+5. Bottom label shows "secondary" step
+6. Slider position controls intensity ratio
+
+### Crossfade Button
+
+Toggle crossfade panel:
+
+```cpp
+private:
+    QToolButton *m_crossfadeButton;
+    
+protected slots:
+    void slotShowCrossfadePanel(bool enable);
+    
+public:
+    bool sideFaderButtonIsChecked() const;
+    
+public slots:
+    void slotSideFaderButtonChecked(bool enable);
+    
+signals:
+    void sideFaderButtonToggled();
+```
+
+Source: `vccuelist.h:264`, `vccuelist.h:312`, `vccuelist.h:291`, `vccuelist.h:305`, `vccuelist.h:300`
+
+## Keyboard Shortcuts
+
+All controls support keyboard shortcuts:
+
+```cpp
+void setNextKeySequence(const QKeySequence& keySequence);
+QKeySequence nextKeySequence() const;
+
+void setPreviousKeySequence(const QKeySequence& keySequence);
+QKeySequence previousKeySequence() const;
+
+void setPlaybackKeySequence(const QKeySequence& keySequence);
+QKeySequence playbackKeySequence() const;
+
+void setStopKeySequence(const QKeySequence& keySequence);
+QKeySequence stopKeySequence() const;
+```
+
+Source: `vccuelist.h:334-356`
+
+Common keyboard mappings:
+
+- **Space**: Playback (GO)
+- **Backspace**: Stop
+- **Right Arrow**: Next
+- **Left Arrow**: Previous
+- **Enter**: Run selected cue
+
+## External Input
+
+Cue lists support multiple input sources:
+
+```cpp
+static const quint8 nextInputSourceId;
+static const quint8 previousInputSourceId;
+static const quint8 playbackInputSourceId;
+static const quint8 stopInputSourceId;
+static const quint8 sideFaderInputSourceId;
+```
+
+Source: `vccuelist.h:80-84`
+
+Each control can be mapped independently:
+
+- Next: MIDI note or fader
+- Previous: MIDI note or fader  
+- Playback: MIDI note or button
+- Stop: MIDI note or button
+- Crossfade: MIDI fader or encoder
+
+Input processing:
+
+```cpp
+void updateFeedback() override;
+
+protected slots:
+    void slotInputValueChanged(quint32 universe, quint32 channel, uchar value) override;
+```
+
+Source: `vccuelist.h:371-374`
+
+## Solo Frame Integration
+
+Cue lists work with solo frames:
+
+```cpp
+virtual void notifyFunctionStarting(quint32 fid, qreal intensity, bool excludeMonitored) override;
+```
+
+Source: `vccuelist.h:160`
+
+When in a solo frame:
+
+- Starting cue list stops sibling widgets
+- Ensures only one show element runs
+- Clean transitions between cues
+- Professional behavior for theater
+
+## Intensity Control
+
+Cue lists respond to intensity adjustments:
+
+```cpp
+void adjustIntensity(qreal val) override;
+```
+
+Source: `vccuelist.h:387`
+
+Intensity affects:
+
+- All steps in the running chaser
+- Real-time adjustment during playback
+- Submaster control support
+- Grand master integration
+
+## Function Monitoring
+
+Cue lists monitor chaser state:
+
+```cpp
+private slots:
+    void slotFunctionRemoved(quint32 fid);
+    void slotFunctionChanged(quint32 fid);
+    void slotFunctionNameChanged(quint32 fid);
+    void slotFunctionRunning(quint32 fid);
+    void slotFunctionStopped(quint32 fid);
+```
+
+Source: `vccuelist.h:195-218`
+
+Automatic updates when:
+
+- Chaser steps are added/removed/reordered
+- Step names change
+- Function starts/stops from elsewhere
+- Chaser properties are modified
+
+The list view is refreshed through:
+
+```cpp
+private:
+    void updateStepList();
+    QTimer *m_updateTimer;
+    
+private slots:
+    void slotUpdateStepList();
+```
+
+Source: `vccuelist.h:164-168`, `vccuelist.h:204`
+
+## Direct Step Access
+
+Jump directly to any step:
+
+```cpp
+public:
+    void playCueAtIndex(int idx);
+    
+signals:
+    void stepChanged(int idx);
+
+private slots:
+    void slotItemActivated(QTreeWidgetItem *item);
+```
+
+Source: `vccuelist.h:406`, `vccuelist.h:410`, `vccuelist.h:208`
+
+Methods:
+
+- Click step in list to select it
+- Double-click to run specific step
+- Web interface can trigger steps directly
+- External input can jump to steps
+
+## XML Persistence
+
+Cue list configuration example:
+
+```xml
+<CueList ID="5">
+    <WindowState X="10" Y="10" Width="300" Height="400"/>
+    <Appearance>
+        <Font>Arial,10</Font>
+    </Appearance>
+    <Chaser>42</Chaser>
+    <NextPrevBehavior>DefaultRunFirst</NextPrevBehavior>
+    <PlaybackLayout>PlayPauseStop</PlaybackLayout>
+    <SlidersMode>Crossfade</SlidersMode>
+    <Next Key="Right" Universe="0" Channel="10"/>
+    <Previous Key="Left" Universe="0" Channel="11"/>
+    <Playback Key="Space" Universe="0" Channel="12"/>
+    <Stop Key="Backspace" Universe="0" Channel="13"/>
+    <CrossLeft Universe="0" Channel="14"/>
+    <CrossRight Universe="0" Channel="15"/>
+</CueList>
+```
+
+Key XML elements:
+
+- `Chaser`: ID of controlled chaser function
+- `NextPrevBehavior`: Button behavior mode
+- `PlaybackLayout`: Control button arrangement
+- `SlidersMode`: Crossfade configuration
+- `Next/Previous/Playback/Stop`: Control input mappings
+- `CrossLeft/CrossRight`: Crossfade input mappings
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Theater Show" icon="masks-theater">
+    Step-by-step lighting cues synchronized with stage action
+  </Card>
+  <Card title="Concert Lighting" icon="music">
+    Song-based cue lists with automatic timing
+  </Card>
+  <Card title="Architectural Show" icon="building">
+    Timed sequences for building lighting displays
+  </Card>
+  <Card title="Busking" icon="hand-pointer">
+    Manual cue triggering for improvised shows
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<Steps>
+  <Step title="Organize Chaser">
+    Create a well-organized chaser with clear step names
+  </Step>
+  <Step title="Add Cue Notes">
+    Document each step with notes for operators
+  </Step>
+  <Step title="Set Keyboard Shortcuts">
+    Assign intuitive keyboard shortcuts for fast operation
+  </Step>
+  <Step title="Configure Next/Prev">
+    Choose behavior mode that matches your workflow
+  </Step>
+  <Step title="Test Playback">
+    Run through entire cue list before show
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create a Chaser" icon="list-ol">
+    Build the chaser function that will drive your cue list
+  </Card>
+  <Card title="Design Show Layout" icon="layer-group">
+    Organize cue lists within frames for complex shows
+  </Card>
+  <Card title="External Control" icon="gamepad">
+    Connect lighting console or MIDI controller
+  </Card>
+  <Card title="Web Interface" icon="globe">
+    Control cue lists remotely via QLC+ Web Interface
+  </Card>
+</CardGroup>

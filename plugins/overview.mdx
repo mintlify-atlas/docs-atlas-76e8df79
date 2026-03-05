@@ -1,0 +1,191 @@
+---
+title: Plugin Architecture
+description: Overview of QLC+ plugin system and available I/O plugins
+---
+
+## Overview
+
+QLC+ uses a flexible plugin architecture to support various input/output protocols and hardware devices. Each plugin implements the `QLCIOPlugin` interface, providing a standardized way to communicate with different lighting control systems.
+
+## Plugin Interface
+
+All plugins inherit from the `QLCIOPlugin` base class, which defines the core interface for input/output operations:
+
+```cpp
+class QLCIOPlugin : public QObject
+{
+    virtual void init() = 0;
+    virtual QString name() const = 0;
+    virtual int capabilities() const = 0;
+    virtual QString pluginInfo() const = 0;
+};
+```
+
+### Plugin Capabilities
+
+Plugins can support different capabilities through a bitmask system:
+
+- **Output** - Send DMX/control data to devices
+- **Input** - Receive data from controllers
+- **Feedback** - Send visual feedback to input devices
+- **Infinite** - Support unlimited universes (network protocols)
+- **RDM** - Remote Device Management support
+- **Beats** - Beat detection for audio synchronization
+
+## Available Plugins
+
+### Network Protocols
+
+<CardGroup cols={2}>
+  <Card title="Art-Net" icon="network-wired" href="/plugins/artnet">
+    Industry-standard DMX over Ethernet protocol using UDP port 6454
+  </Card>
+  <Card title="E1.31 (sACN)" icon="network-wired" href="/plugins/e131-sacn">
+    ANSI E1.31 streaming ACN protocol, UDP port 5568
+  </Card>
+  <Card title="OSC" icon="wave-square" href="/plugins/osc">
+    Open Sound Control for flexible, bidirectional communication
+  </Card>
+  <Card title="OS2L" icon="server" href="/plugins/os2l">
+    Open Show 2 Light protocol for third-party integration
+  </Card>
+</CardGroup>
+
+### USB Hardware
+
+<CardGroup cols={2}>
+  <Card title="DMX USB" icon="usb" href="/plugins/dmx-usb">
+    USB-to-DMX interfaces from various manufacturers
+  </Card>
+  <Card title="ENTTEC" icon="microchip" href="/plugins/enttec">
+    ENTTEC DMX USB Pro, Pro Mk2, and Open DMX USB
+  </Card>
+  <Card title="DMXKing" icon="microchip" href="/plugins/dmxking">
+    DMXKing ultraDMX Pro and other DMXKing devices
+  </Card>
+</CardGroup>
+
+### Control Protocols
+
+<CardGroup cols={2}>
+  <Card title="MIDI" icon="music" href="/plugins/midi">
+    MIDI input/output for hardware controllers and feedback
+  </Card>
+  <Card title="HID" icon="gamepad" href="/plugins/hid">
+    Human Interface Devices (joysticks, gamepads, etc.)
+  </Card>
+</CardGroup>
+
+### Integration
+
+<Card title="OLA" icon="lightbulb" href="/plugins/ola">
+  Open Lighting Architecture integration for advanced protocol support
+</Card>
+
+## Plugin Universe Mapping
+
+Each plugin maintains a mapping between QLC+ universes and plugin-specific lines:
+
+```cpp
+typedef struct
+{
+    quint32 inputLine;              // Plugin input line (UINT_MAX if not patched)
+    QMap<QString, QVariant> inputParameters;  // Custom input parameters
+    quint32 outputLine;             // Plugin output line (UINT_MAX if not patched)
+    QMap<QString, QVariant> outputParameters; // Custom output parameters
+} PluginUniverseDescriptor;
+```
+
+<Note>
+The default maximum number of universes is 4, but network-based plugins can support unlimited universes through the `Infinite` capability.
+</Note>
+
+## Data Flow
+
+### Output Data Flow
+
+1. QLC+ engine generates DMX data (0-512 channels)
+2. Engine calls `writeUniverse()` on the plugin
+3. Plugin processes and transmits data to hardware/network
+
+```cpp
+virtual void writeUniverse(quint32 universe, quint32 output, 
+                          const QByteArray& data, bool dataChanged);
+```
+
+### Input Data Flow
+
+1. Plugin receives data from hardware/network
+2. Plugin emits `valueChanged()` signal
+3. QLC+ engine processes incoming values
+
+```cpp
+signal void valueChanged(quint32 universe, quint32 input, 
+                        quint32 channel, uchar value, const QString& key);
+```
+
+## Configuration
+
+Plugins can provide custom configuration dialogs:
+
+```cpp
+virtual void configure();           // Open configuration dialog
+virtual bool canConfigure() const;  // Check if configurable
+```
+
+### Custom Parameters
+
+Plugins support custom parameters for fine-tuning behavior:
+
+```cpp
+virtual void setParameter(quint32 universe, quint32 line, 
+                         Capability type, QString name, QVariant value);
+virtual void unSetParameter(quint32 universe, quint32 line, 
+                           Capability type, QString name);
+```
+
+## RDM Support
+
+Some plugins support Remote Device Management (RDM) for bi-directional device communication:
+
+```cpp
+virtual bool sendRDMCommand(quint32 universe, quint32 line, 
+                           uchar command, QVariantList params);
+```
+
+RDM enables:
+- Device discovery
+- Parameter reading/writing
+- Status monitoring
+- Remote configuration
+
+<Warning>
+RDM is currently only supported by ENTTEC DMX USB Pro and DMXKing devices through the DMX USB plugin.
+</Warning>
+
+## Hotplug Support
+
+Modern plugins support USB hotplug detection, automatically detecting when devices are connected or disconnected:
+
+```cpp
+public slots:
+    void slotDeviceAdded(uint vid, uint pid);
+    void slotDeviceRemoved(uint vid, uint pid);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Network Setup" icon="network-wired" href="/plugins/artnet">
+    Configure Art-Net or E1.31 for network-based control
+  </Card>
+  <Card title="USB Hardware" icon="usb" href="/plugins/dmx-usb">
+    Set up USB-to-DMX interfaces
+  </Card>
+  <Card title="MIDI Control" icon="music" href="/plugins/midi">
+    Connect MIDI controllers for hands-on control
+  </Card>
+  <Card title="OLA Integration" icon="lightbulb" href="/plugins/ola">
+    Use OLA for advanced protocol support
+  </Card>
+</CardGroup>

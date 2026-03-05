@@ -1,0 +1,668 @@
+---
+title: Fixtures API
+description: API reference for working with fixtures and fixture definitions in QLC+
+---
+
+Fixtures represent physical lighting devices in QLC+. This guide covers the Fixture class, fixture definitions, and related APIs.
+
+## Fixture Class
+
+The `Fixture` class (engine/src/fixture.h:71) represents an instance of a lighting fixture.
+
+### Creating Fixtures
+
+```cpp
+Fixture* fixture = new Fixture(doc);
+fixture->setName("My Moving Head");
+fixture->setUniverse(0);
+fixture->setAddress(0);
+fixture->setChannels(16);
+
+// Add to document
+doc->addFixture(fixture);
+```
+
+### Basic Properties
+
+<Tabs>
+  <Tab title="Identity">
+    ```cpp
+    // ID (assigned by Doc)
+    void setID(quint32 id);
+    quint32 id() const;
+    static quint32 invalidId();
+    
+    // Name
+    void setName(const QString& name);
+    QString name() const;
+    
+    // Type
+    enum Type {
+        Dimmer = 0,
+        MovingHead,
+        Scanner,
+        RGBPanel,
+        GenericRGB
+    };
+    int type() const;
+    ```
+  </Tab>
+  
+  <Tab title="Addressing">
+    ```cpp
+    // Universe
+    void setUniverse(quint32 universe);
+    quint32 universe() const;
+    
+    // DMX address (0-511)
+    void setAddress(quint32 address);
+    quint32 address() const;
+    
+    // Combined universe and address
+    quint32 universeAddress() const;
+    
+    // Number of channels
+    void setChannels(quint32 channels);
+    quint32 channels() const;
+    
+    // Check for address conflict
+    bool checkAddressValidity() const;
+    ```
+  </Tab>
+  
+  <Tab title="Definition">
+    ```cpp
+    // Fixture definition
+    QLCFixtureDef* fixtureDef() const;
+    
+    // Fixture mode
+    QLCFixtureMode* fixtureMode() const;
+    QString fixtureModeName() const;
+    
+    // Set from definition
+    bool setFixtureDefinition(const QLCFixtureDef* fixtureDef,
+                             const QLCFixtureMode* mode);
+    ```
+  </Tab>
+</Tabs>
+
+### Channel Access
+
+```cpp
+// Get channel
+const QLCChannel* channel(quint32 channelIndex) const;
+
+// Get channel by group
+QLCChannel::Group channelGroup(quint32 channelIndex) const;
+
+// Find channel number by group
+uint32_t channelNumber(QLCChannel::Group group,
+                      QLCChannel::ControlByte controlByte) const;
+
+// Master intensity channel
+QLCChannel* masterIntensityChannel() const;
+
+// All channels
+QVector<const QLCChannel*> channels() const;
+```
+
+### Channel Groups
+
+```cpp
+namespace QLCChannel
+{
+    enum Group {
+        NoGroup = 0,
+        Intensity,
+        Colour,
+        Gobo,
+        Shutter,
+        Speed,
+        Pan,
+        Tilt,
+        Prism,
+        Beam,
+        Effect,
+        Maintenance,
+        Nothing
+    };
+    
+    enum ControlByte {
+        MSB = 0,  // Most significant byte (coarse)
+        LSB = 1   // Least significant byte (fine)
+    };
+}
+```
+
+### Heads
+
+Multi-head fixtures (e.g., LED bars) have multiple heads:
+
+```cpp
+// Get heads
+int headsCount() const;
+QLCFixtureHead head(int index) const;
+
+// Head information
+class QLCFixtureHead
+{
+public:
+    // Channels in this head
+    QVector<quint32> channels() const;
+    
+    // RGB/CMY components
+    QVector<quint32> rgbChannels() const;
+    QVector<quint32> cmyChannels() const;
+    
+    // Master dimmer
+    int masterIntensityChannel() const;
+};
+```
+
+### Physical Properties
+
+```cpp
+class QLCPhysical
+{
+public:
+    // Bulb
+    QString bulbType() const;
+    int bulbLumens() const;
+    int bulbColourTemperature() const;
+    
+    // Dimensions
+    int weight() const;      // kg
+    int width() const;       // mm
+    int height() const;      // mm
+    int depth() const;       // mm
+    
+    // Lens
+    QString lensName() const;
+    int lensDegreesMin() const;
+    int lensDegreesMax() const;
+    
+    // Focus
+    enum FocusType { Fixed, Head, Mirror };
+    FocusType focusType() const;
+    int focusPanMax() const;   // degrees
+    int focusTiltMax() const;  // degrees
+    
+    // Technical
+    int powerConsumption() const;  // watts
+    QString dmxConnector() const;
+};
+
+QLCPhysical physical() const;
+```
+
+### Load and Save
+
+```cpp
+// Load from XML
+bool loadXML(QXmlStreamReader& doc, const QLCFixtureDefCache* cache);
+
+// Save to XML
+bool saveXML(QXmlStreamWriter* doc) const;
+```
+
+**Signals:**
+```cpp
+void changed(quint32 id);
+```
+
+## Fixture Definitions
+
+Fixture definitions describe fixture capabilities.
+
+### QLCFixtureDef Class
+
+```cpp
+class QLCFixtureDef
+{
+public:
+    // Identity
+    QString manufacturer() const;
+    QString model() const;
+    QString name() const;  // "Manufacturer Model"
+    QString type() const;
+    
+    // Channels
+    QVector<QLCChannel*> channels() const;
+    QLCChannel* channel(const QString& name) const;
+    
+    // Modes
+    QVector<QLCFixtureMode*> modes() const;
+    QLCFixtureMode* mode(const QString& name) const;
+    
+    // Creator
+    QString author() const;
+};
+```
+
+### QLCFixtureMode Class
+
+```cpp
+class QLCFixtureMode
+{
+public:
+    // Name
+    QString name() const;
+    
+    // Channels
+    int channels() const;
+    QLCChannel* channel(quint32 index) const;
+    quint32 channelNumber(QLCChannel* channel) const;
+    
+    // Physical properties
+    QLCPhysical physical() const;
+    
+    // Heads
+    int heads() const;
+    QLCFixtureHead head(int index) const;
+};
+```
+
+### QLCChannel Class
+
+```cpp
+class QLCChannel
+{
+public:
+    // Name and group
+    QString name() const;
+    Group group() const;
+    ControlByte controlByte() const;
+    
+    // Color (for intensity channels)
+    QColor colour() const;
+    
+    // Capabilities
+    QList<QLCCapability*> capabilities() const;
+    QLCCapability* searchCapability(uchar value) const;
+    QLCCapability* searchCapability(const QString& name) const;
+    
+    // Default value
+    uchar defaultValue() const;
+};
+```
+
+### QLCCapability Class
+
+```cpp
+class QLCCapability
+{
+public:
+    // Value range
+    uchar min() const;
+    uchar max() const;
+    uchar middle() const;
+    
+    // Name and description
+    QString name() const;
+    
+    // Resources
+    QString resourceName() const;
+    QColor resourceColor1() const;
+    QColor resourceColor2() const;
+    
+    // Aliases
+    QString alias(const QString& capability) const;
+};
+```
+
+## Fixture Definition Cache
+
+The cache loads and manages fixture definitions.
+
+### QLCFixtureDefCache Class
+
+```cpp
+class QLCFixtureDefCache
+{
+public:
+    // Load definitions
+    bool load(const QString& path);
+    int loadMap(const QString& path);
+    
+    // Access definitions
+    QList<QLCFixtureDef*> definitions() const;
+    QLCFixtureDef* fixtureDef(const QString& manufacturer,
+                             const QString& model) const;
+    
+    // Manufacturers
+    QStringList manufacturers() const;
+    QStringList models(const QString& manufacturer) const;
+};
+
+// Access from Doc
+QLCFixtureDefCache* cache = doc->fixtureDefCache();
+```
+
+## Working with Fixtures
+
+### Adding a Generic RGB Fixture
+
+```cpp
+Fixture* createGenericRGB(Doc* doc, const QString& name,
+                         quint32 universe, quint32 address)
+{
+    Fixture* fixture = new Fixture(doc);
+    fixture->setName(name);
+    fixture->setUniverse(universe);
+    fixture->setAddress(address);
+    fixture->setChannels(3);  // RGB
+    
+    if (!doc->addFixture(fixture))
+    {
+        delete fixture;
+        return nullptr;
+    }
+    
+    return fixture;
+}
+```
+
+### Adding a Fixture from Definition
+
+```cpp
+Fixture* createFromDefinition(Doc* doc, const QString& manufacturer,
+                             const QString& model, const QString& mode,
+                             const QString& name,
+                             quint32 universe, quint32 address)
+{
+    // Get definition
+    QLCFixtureDefCache* cache = doc->fixtureDefCache();
+    QLCFixtureDef* fixtureDef = cache->fixtureDef(manufacturer, model);
+    if (!fixtureDef)
+        return nullptr;
+    
+    // Get mode
+    QLCFixtureMode* fixtureMode = fixtureDef->mode(mode);
+    if (!fixtureMode)
+        return nullptr;
+    
+    // Create fixture
+    Fixture* fixture = new Fixture(doc);
+    fixture->setName(name);
+    fixture->setUniverse(universe);
+    fixture->setAddress(address);
+    fixture->setFixtureDefinition(fixtureDef, fixtureMode);
+    
+    if (!doc->addFixture(fixture))
+    {
+        delete fixture;
+        return nullptr;
+    }
+    
+    return fixture;
+}
+```
+
+### Enumerating Fixture Channels
+
+```cpp
+void printFixtureChannels(Fixture* fixture)
+{
+    qDebug() << "Fixture:" << fixture->name();
+    qDebug() << "Universe:" << fixture->universe()
+             << "Address:" << fixture->address();
+    qDebug() << "Channels:" << fixture->channels();
+    
+    for (quint32 i = 0; i < fixture->channels(); i++)
+    {
+        const QLCChannel* ch = fixture->channel(i);
+        if (ch)
+        {
+            qDebug() << "  Channel" << i << ":"
+                     << ch->name() << "("
+                     << QLCChannel::groupToString(ch->group())
+                     << ")";
+        }
+    }
+}
+```
+
+### Finding Specific Channels
+
+```cpp
+// Find pan channel
+quint32 panChannel = fixture->channelNumber(QLCChannel::Pan,
+                                           QLCChannel::MSB);
+if (panChannel != QLCChannel::invalid())
+{
+    qDebug() << "Pan channel:" << panChannel;
+}
+
+// Find tilt channel
+quint32 tiltChannel = fixture->channelNumber(QLCChannel::Tilt,
+                                            QLCChannel::MSB);
+if (tiltChannel != QLCChannel::invalid())
+{
+    qDebug() << "Tilt channel:" << tiltChannel;
+}
+
+// Find RGB channels
+QLCFixtureHead head = fixture->head(0);
+QVector<quint32> rgb = head.rgbChannels();
+if (rgb.size() >= 3)
+{
+    qDebug() << "Red:" << rgb[0]
+             << "Green:" << rgb[1]
+             << "Blue:" << rgb[2];
+}
+```
+
+### Checking Address Conflicts
+
+```cpp
+bool hasConflict(Doc* doc, Fixture* fixture)
+{
+    quint32 startAddr = fixture->universeAddress();
+    quint32 endAddr = startAddr + fixture->channels() - 1;
+    
+    for (Fixture* other : doc->fixtures())
+    {
+        if (other->id() == fixture->id())
+            continue;
+            
+        quint32 otherStart = other->universeAddress();
+        quint32 otherEnd = otherStart + other->channels() - 1;
+        
+        // Check for overlap
+        if (!(endAddr < otherStart || startAddr > otherEnd))
+        {
+            qWarning() << "Conflict between" << fixture->name()
+                      << "and" << other->name();
+            return true;
+        }
+    }
+    
+    return false;
+}
+```
+
+## Fixture Groups
+
+Fixture groups organize fixtures for RGB matrix effects.
+
+### FixtureGroup Class
+
+```cpp
+class FixtureGroup
+{
+public:
+    // Identity
+    void setName(const QString& name);
+    QString name() const;
+    
+    // Size
+    void setSize(const QSize& size);
+    QSize size() const;
+    
+    // Heads
+    struct GroupHead {
+        quint32 fxi;   // Fixture ID
+        int head;      // Head index
+    };
+    
+    void assignHead(QPoint pt, GroupHead head);
+    void resetHead(QPoint pt);
+    GroupHead head(QPoint pt) const;
+    
+    // Get all heads
+    QList<quint32> fixtureList() const;
+    QList<GroupHead> headsList() const;
+};
+```
+
+### Creating a Fixture Group
+
+```cpp
+FixtureGroup* createMatrixGroup(Doc* doc, const QString& name,
+                               int width, int height,
+                               const QList<quint32>& fixtureIds)
+{
+    FixtureGroup* group = new FixtureGroup(doc);
+    group->setName(name);
+    group->setSize(QSize(width, height));
+    
+    // Assign fixtures to grid positions
+    int idx = 0;
+    for (int y = 0; y < height; y++)
+    {
+        for (int x = 0; x < width; x++)
+        {
+            if (idx < fixtureIds.size())
+            {
+                FixtureGroup::GroupHead head;
+                head.fxi = fixtureIds[idx++];
+                head.head = 0;
+                group->assignHead(QPoint(x, y), head);
+            }
+        }
+    }
+    
+    doc->addFixtureGroup(group);
+    return group;
+}
+```
+
+## Channel Modifiers
+
+Channel modifiers apply transformations to channel values.
+
+### ChannelModifier Class
+
+```cpp
+class ChannelModifier
+{
+public:
+    // Name
+    QString name() const;
+    
+    // Apply modification
+    uchar modifyValue(uchar value) const;
+    
+    // Template
+    QString templateName() const;
+};
+```
+
+### Using Modifiers
+
+```cpp
+// Get modifiers cache
+QLCModifiersCache* cache = doc->modifiersCache();
+
+// Get modifier
+ChannelModifier* modifier = cache->modifier("MyModifier");
+
+// Apply to value
+uchar original = 128;
+uchar modified = modifier->modifyValue(original);
+```
+
+## Advanced Topics
+
+### Cross-Universe Fixtures
+
+Fixtures can span multiple universes:
+
+```cpp
+Fixture* fixture = new Fixture(doc);
+fixture->setUniverse(0);
+fixture->setAddress(500);  // Starts at address 500
+fixture->setChannels(20);  // Spans into next universe
+
+// Add with cross-universe flag
+doc->addFixture(fixture, Fixture::invalidId(), true);
+```
+
+### Forced HTP/LTP
+
+Override default channel behavior:
+
+```cpp
+QList<int> forcedHTP;
+QList<int> forcedLTP;
+
+forcedHTP << 0 << 1 << 2;  // Force RGB channels to HTP
+forcedLTP << 5;             // Force gobo channel to LTP
+
+doc->updateFixtureChannelCapabilities(fixture->id(),
+                                     forcedHTP, forcedLTP);
+```
+
+### Bulk Fixture Operations
+
+```cpp
+// Replace all fixtures
+QList<Fixture*> newFixtures;
+// ... populate newFixtures ...
+doc->replaceFixtures(newFixtures);
+
+// Get total power consumption
+int fuzzy = 0;
+int totalWatts = doc->totalPowerConsumption(fuzzy);
+qDebug() << "Total:" << totalWatts << "W"
+         << "Fixtures without power data:" << fuzzy;
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Memory Management">
+    - Fixtures are owned by `Doc`
+    - Use `Doc::addFixture()` and `Doc::deleteFixture()`
+    - Don't delete fixtures manually
+    - Use `QPointer<Fixture>` for long-lived references
+  </Accordion>
+
+  <Accordion title="Address Management">
+    - Always check for address conflicts
+    - Use `checkAddressValidity()` before adding
+    - Consider cross-universe fixtures
+    - Leave gaps between fixtures for patching flexibility
+  </Accordion>
+
+  <Accordion title="Channel Access">
+    - Always check if channel exists before using
+    - Use `QLCChannel::invalid()` constant for comparisons
+    - Cache channel lookups if used frequently
+    - Handle multi-head fixtures correctly
+  </Accordion>
+
+  <Accordion title="Fixture Definitions">
+    - Load fixture definition cache at startup
+    - Prefer using definitions over generic fixtures
+    - Validate definition exists before creating fixture
+    - Handle missing definitions gracefully
+  </Accordion>
+</AccordionGroup>
+
+## Resources
+
+- [Engine API](/api/engine)
+- [Functions API](/api/functions)
+- [Fixture Definitions Guide](/development/fixture-definitions)
+- [Source Code](https://github.com/mcallegari/qlcplus/tree/master/engine/src)

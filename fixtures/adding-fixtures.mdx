@@ -1,0 +1,317 @@
+---
+title: Adding Fixtures
+description: Learn how to add fixtures to your QLC+ project, configure DMX addressing, and manage fixture properties
+---
+
+## Overview
+
+Fixtures are the core building blocks of any QLC+ project. A fixture represents a physical lighting device controlled via DMX, with specific channels for controlling various parameters like intensity, color, position, and effects.
+
+## Understanding Fixtures
+
+In QLC+, each fixture instance has:
+
+- **Fixture ID**: A unique identifier assigned to the fixture in your project
+- **Name**: A friendly name to identify the fixture (e.g., "Front Wash 1")
+- **Universe**: The DMX universe the fixture belongs to (zero-based: 0-7)
+- **Address**: The starting DMX address (zero-based: 0-511)
+- **Channels**: The number of DMX channels the fixture occupies
+- **Type**: The fixture category (Moving Head, Dimmer, Scanner, LED Bar, etc.)
+
+<Note>
+QLC+ uses zero-based addressing internally. Universe 1 is stored as 0, and DMX address 1 is stored as 0. The UI automatically converts these for user-friendly display.
+</Note>
+
+## Adding a Fixture
+
+<Steps>
+  <Step title="Open Fixture Manager">
+    Navigate to the Fixture Manager in the QLC+ interface. This is where you'll add and manage all fixtures in your project.
+  </Step>
+
+  <Step title="Select Fixture Definition">
+    Choose a fixture definition from the built-in library:
+    - Browse by manufacturer and model
+    - Select the appropriate fixture mode based on your device's channel configuration
+    - Each mode represents a different channel layout for the same fixture
+  </Step>
+
+  <Step title="Configure Addressing">
+    Set the fixture's DMX parameters:
+    
+    ```cpp
+    // Internal representation (from fixture.cpp:125-137)
+    void Fixture::setUniverse(quint32 universe)
+    {
+        // Universe stored in highest 7 bits
+        m_address = (m_address & 0x01FF) | (universe << 9);
+    }
+    
+    void Fixture::setAddress(quint32 address)
+    {
+        // Don't allow more than 512 channels per universe
+        if (address > 511)
+            return;
+        // Address stored in lowest 9 bits
+        m_address = (m_address & 0xFE00) | (address & 0x01FF);
+    }
+    ```
+    
+    - **Universe**: Select which DMX universe (typically 1-4 for most setups)
+    - **Address**: Choose the starting DMX channel
+    - Ensure there's no address overlap with other fixtures
+  </Step>
+
+  <Step title="Name the Fixture">
+    Give your fixture a descriptive name that helps you identify it during programming (e.g., "Stage Left Par", "Moving Head 3").
+  </Step>
+
+  <Step title="Add to Project">
+    Confirm the fixture addition. The fixture will now appear in your fixture list and be available for use in scenes and functions.
+  </Step>
+</Steps>
+
+## Fixture Types
+
+QLC+ supports various fixture types defined in `qlcfixturedef.h:93-109`:
+
+<Accordion title="Available Fixture Types">
+  - **ColorChanger**: RGB/RGBW color mixing fixtures
+  - **Dimmer**: Simple dimmer channels or packs
+  - **Effect**: Special effect devices
+  - **Fan**: Fans for fog/haze effects
+  - **Flower**: Flower-style LED effects
+  - **Hazer**: Haze machines
+  - **Laser**: Laser effect projectors
+  - **LEDBarBeams**: LED bars with individual beam control
+  - **LEDBarPixels**: LED bars with pixel-level control
+  - **MovingHead**: Moving head fixtures with pan/tilt
+  - **Scanner**: Mirror scanner fixtures
+  - **Smoke**: Smoke machines
+  - **Strobe**: Strobe lights
+  - **Other**: Miscellaneous fixture types
+</Accordion>
+
+## Generic Dimmers
+
+If your fixture doesn't have a definition in the library, you can create a generic dimmer:
+
+```cpp
+// From fixture.cpp:180-201
+void Fixture::setChannels(quint32 channels)
+{
+    if (m_fixtureDef == NULL && m_fixtureMode == NULL)
+    {
+        QLCFixtureDef *fixtureDef = genericDimmerDef(channels);
+        QLCFixtureMode *fixtureMode = genericDimmerMode(fixtureDef, channels);
+        setFixtureDefinition(fixtureDef, fixtureMode);
+    }
+    m_channels = channels;
+}
+```
+
+<Steps>
+  <Step title="Select Generic Dimmer">
+    Choose "Generic" as the manufacturer and "Generic Dimmer" as the model.
+  </Step>
+
+  <Step title="Set Channel Count">
+    Specify how many consecutive dimmer channels you need (1-512).
+  </Step>
+
+  <Step title="Configure Addressing">
+    Set the universe and starting address as with regular fixtures.
+  </Step>
+</Steps>
+
+## Cross-Universe Fixtures
+
+Some large fixtures may span across universe boundaries:
+
+```cpp
+// From fixture.h:185-195
+void setCrossUniverse(bool enable);
+bool crossUniverse() const;
+```
+
+When a fixture's channels extend beyond the 512-channel limit of a single universe, enable the cross-universe option. The fixture's channels will automatically continue into the next universe.
+
+<Warning>
+Cross-universe fixtures require careful planning. Ensure your DMX output devices support multi-universe output and that addresses are properly configured.
+</Warning>
+
+## Fixture Modes
+
+Most intelligent fixtures support multiple operating modes with different channel configurations:
+
+- **Basic Mode**: Fewer channels, simplified control
+- **Standard Mode**: Full feature set with moderate channel count
+- **Extended Mode**: Maximum features, highest channel count
+
+### Example: Fixture Mode Structure
+
+From the ADB ALC4 fixture definition:
+
+```xml
+<Mode Name="Standard 5 Channels (CT 7 Preset)">
+  <Channel Number="0">Master Dimmer</Channel>
+  <Channel Number="1">CT Preset</Channel>
+  <Channel Number="2">Red</Channel>
+  <Channel Number="3">Green</Channel>
+  <Channel Number="4">Blue</Channel>
+</Mode>
+
+<Mode Name="Extended 21 Channels (CT 7 Preset)">
+  <Channel Number="0">Master Dimmer</Channel>
+  <Channel Number="1">Dimmer 1</Channel>
+  <!-- 19 more channels... -->
+</Mode>
+```
+
+<Tip>
+Choose the mode that matches your fixture's DIP switch or menu settings. Using the wrong mode will result in incorrect channel mapping.
+</Tip>
+
+## Managing Fixture Properties
+
+### Changing Fixture Address
+
+You can modify a fixture's address after creation:
+
+1. Select the fixture in the Fixture Manager
+2. Edit the universe or address fields
+3. Verify no conflicts with other fixtures
+4. Apply the changes
+
+### Renaming Fixtures
+
+Give fixtures meaningful names:
+
+```cpp
+// From fixture.h:135-147
+void setName(const QString& name);
+QString name() const;
+```
+
+Good naming conventions:
+- **Location-based**: "Stage Left Par 1", "Truss Front MH 3"
+- **Function-based**: "Backlight Wash", "Audience Color"
+- **Zone-based**: "Zone A Dimmer 1", "Zone B Spot 2"
+
+### Removing Fixtures
+
+When removing a fixture:
+
+1. Ensure it's not used in any active scenes or chasers
+2. Select the fixture in the Fixture Manager
+3. Delete the fixture
+4. The fixture ID is freed for reuse
+
+<Warning>
+Removing a fixture that's referenced in functions will cause those functions to malfunction. QLC+ will warn you about these dependencies.
+</Warning>
+
+## Fixture Channels
+
+Each fixture has channels for controlling different parameters:
+
+### Channel Properties
+
+```cpp
+// From fixture.h:226-289
+quint32 channels() const;  // Total number of channels
+const QLCChannel* channel(quint32 channel) const;  // Get specific channel
+quint32 channelAddress(quint32 channel) const;  // Get DMX address of channel
+```
+
+### Channel Groups
+
+Channels are organized by function:
+
+- **Intensity**: Dimmer/master intensity channels
+- **Colour**: RGB, CMY, color wheel channels
+- **Gobo**: Gobo wheel selection and rotation
+- **Shutter**: Shutter/strobe channels
+- **Speed**: Speed control for effects
+- **Prism**: Prism insertion and rotation
+- **Beam**: Focus, zoom, iris control
+- **Pan**: Horizontal movement
+- **Tilt**: Vertical movement
+
+### Finding Specific Channels
+
+```cpp
+// Get RGB channels (from fixture.h:286-290)
+QVector<quint32> rgbChannels(int head = 0) const;
+QVector<quint32> cmyChannels(int head = 0) const;
+
+// Find channel by group and color
+quint32 channel(QLCChannel::Group group,
+                QLCChannel::PrimaryColour color = QLCChannel::NoColour) const;
+```
+
+## Multi-Head Fixtures
+
+Fixtures with multiple heads (like LED bars) have special considerations:
+
+```cpp
+// From fixture.h:415-433
+int heads() const;  // Number of heads
+QLCFixtureHead head(int index) const;  // Get specific head
+```
+
+Each head in a multi-head fixture:
+- Has its own set of channels
+- Can be controlled independently
+- Is represented in fixture groups as separate entities
+
+### Example: Multi-Head Configuration
+
+From the ADB ALC4 fixture (Matrix mode with 4 heads):
+
+```xml
+<Mode Name="Matrix 20 Channels (CT 7 Preset)">
+  <Head>
+    <Channel>4</Channel>  <!-- Blue 1 -->
+    <Channel>2</Channel>  <!-- Red 1 -->
+    <Channel>3</Channel>  <!-- Green 1 -->
+    <Channel>0</Channel>  <!-- Dimmer 1 -->
+    <Channel>1</Channel>  <!-- CT Preset 1 -->
+  </Head>
+  <Head>
+    <Channel>9</Channel>  <!-- Blue 2 -->
+    <Channel>6</Channel>  <!-- Red 2 -->
+    <!-- ... -->
+  </Head>
+  <!-- 2 more heads... -->
+</Mode>
+```
+
+## Best Practices
+
+<Accordion title="Address Planning">
+  - Document your DMX address plan before adding fixtures
+  - Leave gaps between fixtures for future expansion
+  - Group similar fixtures in consecutive address ranges
+  - Use a spreadsheet to track universe and address assignments
+</Accordion>
+
+<Accordion title="Naming Conventions">
+  - Use consistent naming patterns across your project
+  - Include fixture type and number in the name
+  - Consider adding location information
+  - Keep names concise but descriptive
+</Accordion>
+
+<Accordion title="Mode Selection">
+  - Match the mode to your fixture's physical configuration
+  - Consider channel count vs. feature requirements
+  - Document which mode you're using for each fixture
+  - Test the fixture after adding to verify correct operation
+</Accordion>
+
+## Next Steps
+
+- Learn about [Fixture Groups](/fixtures/fixture-groups) for controlling multiple fixtures together
+- Explore [Channel Modifiers](/fixtures/channel-modifiers) to adjust channel behavior
+- Create custom definitions with the [Fixture Editor](/fixtures/fixture-editor)

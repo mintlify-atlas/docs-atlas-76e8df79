@@ -1,0 +1,720 @@
+---
+title: RGB Matrix Scripts
+description: Guide to creating RGB matrix animation scripts for QLC+
+---
+
+RGB scripts are JavaScript files that generate animated patterns for LED matrices and pixel-mapped fixtures. They control how colors change over time across a grid of pixels.
+
+## What is an RGB Script?
+
+An RGB script is a JavaScript file that implements a specific API to generate color patterns for RGB matrices. Scripts can create:
+
+- Animated patterns (waves, circles, plasma)
+- Text scrolling effects
+- Geometric shapes
+- Random animations
+- Custom effects
+
+Scripts are loaded from `resources/rgbscripts/` and cached at startup.
+
+## Script API
+
+### API Version 2
+
+RGB scripts use API version 2 (current). The script must return an object with specific properties and methods.
+
+### Basic Structure
+
+```javascript
+// IIFE pattern to avoid global namespace pollution
+(
+  function()
+  {
+    var algo = new Object;
+    algo.apiVersion = 2;
+    algo.name = "My Script";
+    algo.author = "Your Name";
+    
+    // Color handling
+    algo.acceptColors = 0;  // 0 = use provided colors
+                            // 1 = script generates colors
+                            // 2 = script can use or generate colors
+    
+    // Properties array (for user configuration)
+    algo.properties = new Array();
+    
+    // Required method: generate the color map
+    algo.rgbMap = function(width, height, rgb, step)
+    {
+      var map = new Array(height);
+      for (var y = 0; y < height; y++)
+      {
+        map[y] = new Array(width);
+        for (var x = 0; x < width; x++)
+        {
+          map[y][x] = rgb;  // Set color for this pixel
+        }
+      }
+      return map;
+    };
+    
+    // Optional: total number of steps for animation
+    algo.rgbMapStepCount = function(width, height)
+    {
+      return width * height;  // Example: one step per pixel
+    };
+    
+    return algo;
+  }
+)();
+```
+
+## Core API Properties
+
+<ParamField path="apiVersion" type="integer" required>
+  API version number. Must be `2` for current scripts.
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Display name of the script (shown in QLC+ UI)
+</ParamField>
+
+<ParamField path="author" type="string" required>
+  Script author name
+</ParamField>
+
+<ParamField path="acceptColors" type="integer" required>
+  Color handling mode:
+  - `0` = Use colors provided by QLC+
+  - `1` = Script generates its own colors (ignores provided colors)
+  - `2` = Script can optionally use provided colors
+</ParamField>
+
+<ParamField path="properties" type="array" required>
+  Array of user-configurable properties (can be empty)
+</ParamField>
+
+## Core API Methods
+
+### rgbMap()
+
+Generates the color map for a single animation frame.
+
+```javascript
+algo.rgbMap = function(width, height, rgb, step)
+{
+  // width: matrix width in pixels
+  // height: matrix height in pixels
+  // rgb: current color (if acceptColors is 0 or 2)
+  // step: current animation step number
+  
+  var map = new Array(height);
+  for (var y = 0; y < height; y++)
+  {
+    map[y] = new Array(width);
+    for (var x = 0; x < width; x++)
+    {
+      // Calculate color for pixel [x, y]
+      map[y][x] = calculateColor(x, y, step);
+    }
+  }
+  return map;
+};
+```
+
+**Parameters:**
+- `width` (integer) - Matrix width in pixels
+- `height` (integer) - Matrix height in pixels
+- `rgb` (integer) - Current color as 24-bit RGB (0xRRGGBB)
+- `step` (integer) - Current animation step (0 to stepCount-1)
+
+**Returns:**
+- 2D array `[height][width]` of RGB color values (0xRRGGBB format)
+
+### rgbMapStepCount()
+
+Optional method to specify total animation steps.
+
+```javascript
+algo.rgbMapStepCount = function(width, height)
+{
+  // Return total number of animation steps
+  // If not defined, defaults to width * height
+  return 100;
+};
+```
+
+**Parameters:**
+- `width` (integer) - Matrix width
+- `height` (integer) - Matrix height
+
+**Returns:**
+- Total number of animation steps (integer)
+
+## User Properties
+
+Properties allow users to configure script behavior from the QLC+ UI.
+
+### Property Definition
+
+```javascript
+algo.properties = new Array();
+
+// List property
+algo.properties.push(
+  "name:orientation|type:list|display:Orientation|" +
+  "values:Horizontal,Vertical|write:setOrientation|read:getOrientation"
+);
+
+// Range property
+algo.properties.push(
+  "name:speed|type:range|display:Speed|" +
+  "values:1,100|write:setSpeed|read:getSpeed"
+);
+
+// String property
+algo.properties.push(
+  "name:text|type:string|display:Text|" +
+  "write:setText|read:getText"
+);
+```
+
+### Property Format
+
+Properties are pipe-separated key:value pairs:
+
+<ParamField path="name" type="string" required>
+  Internal property name (used in code)
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Property type: `list`, `range`, `string`, or `integer`
+</ParamField>
+
+<ParamField path="display" type="string" required>
+  Display name shown in UI
+</ParamField>
+
+<ParamField path="values" type="string">
+  For `list`: comma-separated options
+  For `range`: min,max values
+</ParamField>
+
+<ParamField path="write" type="string" required>
+  Setter method name
+</ParamField>
+
+<ParamField path="read" type="string" required>
+  Getter method name
+</ParamField>
+
+### Property Getters and Setters
+
+```javascript
+// Store property value
+algo.orientation = 0;
+
+// Setter method
+algo.setOrientation = function(_orientation)
+{
+  if (_orientation === "Horizontal") {
+    algo.orientation = 0;
+  } else if (_orientation === "Vertical") {
+    algo.orientation = 1;
+  }
+};
+
+// Getter method
+algo.getOrientation = function()
+{
+  if (algo.orientation === 0) {
+    return "Horizontal";
+  } else {
+    return "Vertical";
+  }
+};
+```
+
+## Complete Example: Gradient
+
+Based on `resources/rgbscripts/gradient.js`:
+
+```javascript
+(
+  function()
+  {
+    var algo = new Object;
+    algo.apiVersion = 2;
+    algo.name = "Gradient";
+    algo.author = "Massimo Callegari";
+    algo.acceptColors = 0;
+    algo.properties = new Array();
+    
+    // Property: Preset selection
+    algo.presetIndex = 0;
+    algo.properties.push(
+      "name:presetIndex|type:list|display:Preset|" +
+      "values:Rainbow,Sunset,Abstract,Ocean|" +
+      "write:setPreset|read:getPreset"
+    );
+    
+    // Property: Gradient size
+    algo.presetSize = 5;
+    algo.properties.push(
+      "name:presetSize|type:range|display:Size|" +
+      "values:1,40|write:setSize|read:getSize"
+    );
+    
+    // Property: Orientation
+    algo.orientation = 0;
+    algo.properties.push(
+      "name:orientation|type:list|display:Orientation|" +
+      "values:Horizontal,Vertical,Radial|" +
+      "write:setOrientation|read:getOrientation"
+    );
+    
+    // Internal state
+    var util = new Object;
+    util.initialized = false;
+    util.gradientData = new Array();
+    util.presets = new Array();
+    util.presets.push(new Array(0xFF0000, 0x00FF00, 0x0000FF));
+    util.presets.push(new Array(0xFFFF00, 0xFF0000));
+    util.presets.push(new Array(0x5571FF, 0x00FFFF, 0xFF00FF, 0xFFFF00));
+    util.presets.push(new Array(0x003AB9, 0x02EAFF));
+    
+    // Property setters/getters
+    algo.setPreset = function(_preset)
+    {
+      if (_preset === "Rainbow") algo.presetIndex = 0;
+      else if (_preset === "Sunset") algo.presetIndex = 1;
+      else if (_preset === "Abstract") algo.presetIndex = 2;
+      else if (_preset === "Ocean") algo.presetIndex = 3;
+      util.initialize();
+    };
+    
+    algo.getPreset = function()
+    {
+      var presets = ["Rainbow", "Sunset", "Abstract", "Ocean"];
+      return presets[algo.presetIndex];
+    };
+    
+    algo.setSize = function(_size)
+    {
+      algo.presetSize = _size;
+      util.initialize();
+    };
+    
+    algo.getSize = function()
+    {
+      return algo.presetSize;
+    };
+    
+    algo.setOrientation = function(_orientation)
+    {
+      if (_orientation === "Vertical") algo.orientation = 1;
+      else if (_orientation === "Radial") algo.orientation = 2;
+      else algo.orientation = 0;
+    };
+    
+    algo.getOrientation = function()
+    {
+      var orientations = ["Horizontal", "Vertical", "Radial"];
+      return orientations[algo.orientation];
+    };
+    
+    // Initialize gradient data
+    util.initialize = function()
+    {
+      util.gradientData = new Array();
+      var preset = util.presets[algo.presetIndex];
+      
+      for (var i = 0; i < preset.length; i++)
+      {
+        var sColor = preset[i];
+        var eColor = preset[(i + 1) % preset.length];
+        
+        // Extract RGB components
+        var sr = (sColor >> 16) & 0xFF;
+        var sg = (sColor >> 8) & 0xFF;
+        var sb = sColor & 0xFF;
+        var er = (eColor >> 16) & 0xFF;
+        var eg = (eColor >> 8) & 0xFF;
+        var eb = eColor & 0xFF;
+        
+        // Calculate steps
+        var stepR = (er - sr) / algo.presetSize;
+        var stepG = (eg - sg) / algo.presetSize;
+        var stepB = (eb - sb) / algo.presetSize;
+        
+        // Generate gradient
+        for (var s = 0; s < algo.presetSize; s++)
+        {
+          var r = Math.floor(sr + (stepR * s)) & 0xFF;
+          var g = Math.floor(sg + (stepG * s)) & 0xFF;
+          var b = Math.floor(sb + (stepB * s)) & 0xFF;
+          util.gradientData.push((r << 16) | (g << 8) | b);
+        }
+      }
+      util.initialized = true;
+    };
+    
+    // Generate RGB map
+    algo.rgbMap = function(width, height, rgb, step)
+    {
+      if (!util.initialized) util.initialize();
+      
+      var map = new Array(height);
+      for (var y = 0; y < height; y++)
+      {
+        map[y] = new Array(width);
+        var gradStep = 0;
+        
+        if (algo.orientation === 1) {
+          gradStep = step + y;  // Vertical
+        }
+        
+        for (var x = 0; x < width; x++)
+        {
+          if (algo.orientation === 0) {
+            gradStep = step + x;  // Horizontal
+          } else if (algo.orientation === 2) {
+            // Radial
+            var xdis = x - (width - 1) / 2;
+            var ydis = y - (height - 1) / 2;
+            gradStep = step + Math.round(Math.sqrt(xdis * xdis + ydis * ydis));
+          }
+          
+          gradStep = gradStep % util.gradientData.length;
+          map[y][x] = util.gradientData[gradStep];
+        }
+      }
+      return map;
+    };
+    
+    algo.rgbMapStepCount = function(width, height)
+    {
+      if (!util.initialized) util.initialize();
+      return util.gradientData.length;
+    };
+    
+    return algo;
+  }
+)();
+```
+
+## Color Manipulation
+
+### RGB Format
+
+Colors are 24-bit integers in format `0xRRGGBB`:
+
+```javascript
+// Color construction
+var red = 0xFF0000;
+var green = 0x00FF00;
+var blue = 0x0000FF;
+var white = 0xFFFFFF;
+var black = 0x000000;
+
+// From components
+var r = 255, g = 128, b = 64;
+var color = (r << 16) | (g << 8) | b;
+
+// Extract components
+var red   = (color >> 16) & 0xFF;
+var green = (color >> 8) & 0xFF;
+var blue  = color & 0xFF;
+```
+
+### Color Interpolation
+
+```javascript
+function interpolateColor(color1, color2, ratio)
+{
+  // Extract components
+  var r1 = (color1 >> 16) & 0xFF;
+  var g1 = (color1 >> 8) & 0xFF;
+  var b1 = color1 & 0xFF;
+  
+  var r2 = (color2 >> 16) & 0xFF;
+  var g2 = (color2 >> 8) & 0xFF;
+  var b2 = color2 & 0xFF;
+  
+  // Interpolate
+  var r = Math.floor(r1 + (r2 - r1) * ratio);
+  var g = Math.floor(g1 + (g2 - g1) * ratio);
+  var b = Math.floor(b1 + (b2 - b1) * ratio);
+  
+  return (r << 16) | (g << 8) | b;
+}
+```
+
+## Common Patterns
+
+### Horizontal Movement
+
+```javascript
+algo.rgbMap = function(width, height, rgb, step)
+{
+  var map = new Array(height);
+  for (var y = 0; y < height; y++)
+  {
+    map[y] = new Array(width);
+    for (var x = 0; x < width; x++)
+    {
+      // Move pattern horizontally
+      var pos = (x + step) % width;
+      map[y][x] = (pos < width / 2) ? rgb : 0;
+    }
+  }
+  return map;
+};
+```
+
+### Vertical Movement
+
+```javascript
+algo.rgbMap = function(width, height, rgb, step)
+{
+  var map = new Array(height);
+  for (var y = 0; y < height; y++)
+  {
+    map[y] = new Array(width);
+    var pos = (y + step) % height;
+    for (var x = 0; x < width; x++)
+    {
+      map[y][x] = (pos < height / 2) ? rgb : 0;
+    }
+  }
+  return map;
+};
+```
+
+### Radial Pattern
+
+```javascript
+algo.rgbMap = function(width, height, rgb, step)
+{
+  var map = new Array(height);
+  var centerX = width / 2;
+  var centerY = height / 2;
+  var maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+  
+  for (var y = 0; y < height; y++)
+  {
+    map[y] = new Array(width);
+    for (var x = 0; x < width; x++)
+    {
+      var dx = x - centerX;
+      var dy = y - centerY;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      var phase = (dist + step) % maxDist;
+      
+      map[y][x] = (phase < maxDist / 2) ? rgb : 0;
+    }
+  }
+  return map;
+};
+```
+
+## Development Tools
+
+QLC+ includes a development tool for testing scripts:
+
+```
+resources/rgbscripts/devtool.html
+```
+
+Open this file in a web browser to:
+- Load and test your script
+- Adjust properties interactively
+- Preview animation
+- Debug script errors
+
+## Testing Your Script
+
+<Steps>
+  <Step title="Create script file">
+    Save your script in `resources/rgbscripts/yourscript.js`
+  </Step>
+
+  <Step title="Test in devtool">
+    Open `devtool.html` in a browser and load your script
+  </Step>
+
+  <Step title="Test in QLC+">
+    - Restart QLC+ (or reload scripts)
+    - Create an RGB Matrix function
+    - Select your script
+    - Test with different fixture groups
+  </Step>
+
+  <Step title="Verify performance">
+    Ensure script runs smoothly at high frame rates
+  </Step>
+</Steps>
+
+## Performance Tips
+
+<AccordionGroup>
+  <Accordion title="Minimize calculations">
+    - Cache expensive calculations
+    - Use lookup tables for trigonometric functions
+    - Initialize data once, not every frame
+    
+    ```javascript
+    // Good: initialize once
+    util.initialize = function() {
+      util.sinTable = new Array(360);
+      for (var i = 0; i < 360; i++) {
+        util.sinTable[i] = Math.sin(i * Math.PI / 180);
+      }
+    };
+    
+    // Then use cached values in rgbMap
+    var angle = (x + step) % 360;
+    var value = util.sinTable[angle];
+    ```
+  </Accordion>
+
+  <Accordion title="Avoid redundant array creation">
+    ```javascript
+    // Good: reuse arrays if possible
+    algo.rgbMap = function(width, height, rgb, step)
+    {
+      if (!util.map || util.map.length !== height) {
+        util.map = new Array(height);
+        for (var y = 0; y < height; y++) {
+          util.map[y] = new Array(width);
+        }
+      }
+      // Fill existing arrays
+      return util.map;
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Use integers over floats">
+    Integer operations are faster:
+    
+    ```javascript
+    // Prefer integer math when possible
+    var pos = Math.floor(x / 2);  // Or: (x >> 1)
+    var scaled = Math.floor(value * 255);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Mistakes
+
+<Warning>
+Avoid these common pitfalls:
+</Warning>
+
+<AccordionGroup>
+  <Accordion title="Forgetting to return map">
+    ```javascript
+    // Wrong: no return statement
+    algo.rgbMap = function(width, height, rgb, step)
+    {
+      var map = new Array(height);
+      // ... fill map ...
+      // Forgot to return!
+    };
+    
+    // Correct
+    algo.rgbMap = function(width, height, rgb, step)
+    {
+      var map = new Array(height);
+      // ... fill map ...
+      return map;  // Must return the map!
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Wrong array dimensions">
+    ```javascript
+    // Wrong: width and height swapped
+    var map = new Array(width);  // Should be height!
+    for (var y = 0; y < width; y++)  // Wrong!
+    {
+      map[y] = new Array(height);  // Should be width!
+    }
+    
+    // Correct
+    var map = new Array(height);
+    for (var y = 0; y < height; y++)
+    {
+      map[y] = new Array(width);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Ignoring acceptColors">
+    If `acceptColors = 1`, don't use the `rgb` parameter:
+    
+    ```javascript
+    algo.acceptColors = 1;  // Generate own colors
+    
+    algo.rgbMap = function(width, height, rgb, step)
+    {
+      // Don't use 'rgb' parameter - generate your own!
+      var myColor = 0xFF0000;  // Red
+      // ...
+    };
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Built-in Scripts
+
+QLC+ includes many example scripts in `resources/rgbscripts/`:
+
+- **gradient.js** - Color gradients (shown above)
+- **stripes.js** - Stripe patterns
+- **circles.js** - Concentric circles
+- **plasma.js** - Plasma effect
+- **waves.js** - Wave patterns
+- **fill.js** - Fill patterns
+- **marquee.js** - Text scrolling
+- And many more...
+
+Study these for examples and inspiration!
+
+## Contributing Scripts
+
+### Submission Process
+
+<Steps>
+  <Step title="Create your script">
+    Follow the API and test thoroughly
+  </Step>
+
+  <Step title="Test in devtool and QLC+">
+    Verify it works correctly with different matrix sizes
+  </Step>
+
+  <Step title="Add comments">
+    Include header comments with description and author
+  </Step>
+
+  <Step title="Submit pull request">
+    Add your script to `resources/rgbscripts/` and create a PR
+  </Step>
+</Steps>
+
+### Best Practices for Contributions
+
+- Use clear, descriptive names
+- Include useful configurable properties
+- Add comments for complex algorithms
+- Test with various matrix sizes (4x4, 8x8, 16x16, etc.)
+- Ensure good performance
+
+## Resources
+
+- [RGB Matrix Documentation](https://docs.qlcplus.org/v4/rgbmatrix-editor)
+- [Example Scripts](https://github.com/mcallegari/qlcplus/tree/master/resources/rgbscripts)
+- [Development Tool](https://github.com/mcallegari/qlcplus/blob/master/resources/rgbscripts/devtool.html)
+- [Contributing Guidelines](/development/contributing)

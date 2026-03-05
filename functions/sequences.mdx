@@ -1,0 +1,268 @@
+---
+title: "Sequences"
+description: "Specialized chasers that animate a single scene's channel values over time"
+---
+
+## Overview
+
+A Sequence is a specialized type of Chaser that is bound to a single Scene. Instead of playing different scenes in order, a Sequence animates the channel values of its bound scene across multiple steps, creating smooth transitions and animations.
+
+<Note>
+Sequences inherit all functionality from Chasers but add scene-binding capabilities for streamlined animation workflows.
+</Note>
+
+## When to Use Sequences
+
+<CardGroup cols={2}>
+  <Card title="Channel Animation" icon="wave-sine">
+    Animate dimmer, color, or position values smoothly over time
+  </Card>
+  <Card title="Movement Patterns" icon="compass">
+    Create complex movement sequences for moving head fixtures
+  </Card>
+  <Card title="Color Fades" icon="palette">
+    Smooth color transitions across multiple steps
+  </Card>
+  <Card title="Intensity Ramps" icon="chart-line">
+    Build fade-up and fade-down effects for theatrical cues
+  </Card>
+</CardGroup>
+
+## How Sequences Differ from Chasers
+
+| Feature | Chaser | Sequence |
+|---------|--------|----------|
+| **Member Functions** | Multiple different functions | Single bound scene only |
+| **Value Storage** | References function IDs | Stores channel values per step |
+| **Use Case** | Play different lighting states | Animate channel values |
+| **Flexibility** | Any function type | Scene values only |
+
+## Bound Scene Concept
+
+Every Sequence is bound to exactly one Scene:
+
+```cpp
+class Sequence : public Chaser {
+private:
+    quint32 m_boundSceneID;  // The associated Scene ID
+};
+```
+
+The bound scene defines:
+- Which fixtures are controlled
+- Which channels are animated
+- The base structure for all sequence steps
+
+## Creating a Sequence
+
+<Steps>
+  <Step title="Create Base Scene">
+    Create a scene with all fixtures and channels you want to animate
+  </Step>
+  <Step title="Create Sequence">
+    Create a new Sequence and bind it to your scene
+  </Step>
+  <Step title="Add Steps">
+    Each step stores the channel values for that point in time
+  </Step>
+  <Step title="Configure Timing">
+    Set fade times and hold durations for smooth transitions
+  </Step>
+</Steps>
+
+## Key Properties
+
+### Bound Scene ID
+
+<ParamField path="boundSceneID" type="quint32">
+  The ID of the Scene this Sequence animates. Set with `setBoundSceneID()`.
+</ParamField>
+
+### Step Values
+
+Each ChaserStep in a Sequence contains:
+
+```cpp
+struct ChaserStep {
+    quint32 fid;                  // Always equals boundSceneID
+    QList<SceneValue> values;     // Channel values for this step
+    uint fadeIn;                  // Fade in time
+    uint hold;                    // Hold time
+    uint fadeOut;                 // Fade out time
+};
+```
+
+## Class Methods
+
+The Sequence class (sequence.h:31) extends Chaser:
+
+### Scene Binding
+
+```cpp
+// Set the bound scene
+void setBoundSceneID(quint32 sceneID);
+
+// Get the bound scene ID
+quint32 boundSceneID() const;
+
+// Get component list (returns bound scene)
+QList<quint32> components() const;
+```
+
+### Inherited from Chaser
+
+Sequences inherit all Chaser methods:
+- Step management (`addStep()`, `removeStep()`, etc.)
+- Speed mode control
+- Playback control
+- Tempo synchronization
+
+## Step Synchronization
+
+Sequences maintain value consistency with the bound scene:
+
+```cpp
+private:
+    bool m_needFixup;  // Flag for post-load synchronization
+```
+
+During `postLoad()`, the sequence verifies:
+- All steps have the same channels as the bound scene
+- Missing channels are added with zero values
+- Extra channels are preserved
+
+<Warning>
+If the bound scene is modified after creating the sequence (channels added/removed), the sequence may need to be regenerated or manually fixed.
+</Warning>
+
+## XML Structure
+
+Sequences save with scene binding information:
+
+```xml
+<Function Type="Sequence" ID="3" Name="Color Fade" BoundScene="0">
+  <Speed FadeIn="0" FadeOut="0" Duration="500"/>
+  <Direction>Forward</Direction>
+  <RunOrder>Loop</RunOrder>
+  <SpeedModes FadeIn="PerStep" FadeOut="PerStep" Duration="Common"/>
+  <Step Number="0" FadeIn="500" Hold="0" FadeOut="0">
+    <Function>0</Function>
+    <Value>0:255</Value>    <!-- Fixture 0, Red: 255 -->
+    <Value>1:0</Value>      <!-- Fixture 0, Green: 0 -->
+    <Value>2:0</Value>      <!-- Fixture 0, Blue: 0 -->
+  </Step>
+  <Step Number="1" FadeIn="500" Hold="0" FadeOut="0">
+    <Function>0</Function>
+    <Value>0:0</Value>
+    <Value>1:255</Value>
+    <Value>2:0</Value>
+  </Step>
+</Function>
+```
+
+<Note>
+The `BoundScene` attribute is required for Sequences. Without it, the sequence cannot be loaded.
+</Note>
+
+## Scene Value Fixup
+
+The fixup mechanism (sequence.cpp:231) handles scene mismatches:
+
+```cpp
+void Sequence::postLoad() {
+    if (m_needFixup == false)
+        return;
+        
+    Scene *scene = doc()->function(boundSceneID());
+    QList<SceneValue> sceneValues = scene->values();
+    
+    // Synchronize each step with scene structure
+    for (ChaserStep &step : m_steps) {
+        step.values = sceneValues;
+        // Restore original values where they exist
+    }
+}
+```
+
+This ensures:
+1. All steps have consistent channel structure
+2. New scene channels appear in all steps (value = 0)
+3. Existing step values are preserved
+
+## Best Practices
+
+<Steps>
+  <Step title="Design Scene First">
+    Fully configure the bound scene with all needed fixtures/channels before creating steps
+  </Step>
+  <Step title="Use PerStep Speed Mode">
+    For smooth animations, use PerStep mode with appropriate fade times
+  </Step>
+  <Step title="Test Scene Changes">
+    If you modify the bound scene, verify the sequence still works correctly
+  </Step>
+  <Step title="Organize Step Values">
+    Keep channel values logically organized for easier editing
+  </Step>
+</Steps>
+
+## Common Use Cases
+
+### Dimmer Chase
+
+```xml
+<!-- Step 1: Full intensity -->
+<Value>0:255</Value>
+<!-- Step 2: 50% intensity -->
+<Value>0:128</Value>
+<!-- Step 3: Off -->
+<Value>0:0</Value>
+```
+
+### Color Wheel
+
+```xml
+<!-- Red -->
+<Value>0:255</Value><Value>1:0</Value><Value>2:0</Value>
+<!-- Yellow -->
+<Value>0:255</Value><Value>1:255</Value><Value>2:0</Value>
+<!-- Green -->
+<Value>0:0</Value><Value>1:255</Value><Value>2:0</Value>
+```
+
+### Position Sweep
+
+```xml
+<!-- Position 1 -->
+<Value>0:0</Value>    <!-- Pan -->
+<Value>1:128</Value>  <!-- Tilt -->
+<!-- Position 2 -->
+<Value>0:128</Value>
+<Value>1:128</Value>
+<!-- Position 3 -->
+<Value>0:255</Value>
+<Value>1:128</Value>
+```
+
+## Performance Considerations
+
+- Sequences with many steps and channels use more memory
+- The fixup mechanism adds load time overhead
+- Hidden scenes (used only as sequence containers) don't render in UI
+
+<Warning>
+Sequences require their bound scene to exist. Deleting the bound scene will break the sequence. Always delete sequences before deleting their bound scenes.
+</Warning>
+
+## Limitations
+
+1. **Single Scene Only**: Cannot animate multiple scenes
+2. **Channel Structure Fixed**: Adding/removing scene channels requires fixup
+3. **No Function Mixing**: Cannot mix scenes with other function types
+4. **Legacy Format**: Old sequence format is no longer supported
+
+## See Also
+
+- [Scenes](/functions/scenes) - The base for all sequences
+- [Chasers](/functions/chasers) - Parent class with playback control
+- [Shows](/functions/shows) - Timeline-based alternative for complex animations

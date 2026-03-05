@@ -1,0 +1,486 @@
+---
+title: Installing QLC+
+description: Step-by-step installation instructions for QLC+ on Linux, Windows, macOS, and Raspberry Pi
+---
+
+# Installing QLC+
+
+QLC+ is available for multiple platforms including Windows, macOS, Linux, and Raspberry Pi. Follow the instructions below for your operating system.
+
+## System Requirements
+
+Before installing QLC+, ensure your system meets the minimum requirements:
+
+<Tabs>
+  <Tab title="Windows">
+    ### Windows System Requirements
+    
+    - **Operating System:** Windows 10 or newer
+    - **Processor:** Intel Core i3 or equivalent
+    - **RAM:** 2GB minimum, 4GB recommended
+    - **Graphics:** OpenGL 2.0 compatible graphics card
+    - **Storage:** 200MB free disk space
+    - **Additional:** Qt 5 or Qt 6 runtime (included in installer)
+    
+    <Note>
+    For DMX USB interfaces, you may need to install specific device drivers depending on your hardware.
+    </Note>
+  </Tab>
+  
+  <Tab title="macOS">
+    ### macOS System Requirements
+    
+    - **Operating System:** macOS 10.12 (Sierra) or newer
+    - **Processor:** Intel or Apple Silicon (M1/M2)
+    - **RAM:** 2GB minimum, 4GB recommended
+    - **Graphics:** Metal-compatible graphics
+    - **Storage:** 200MB free disk space
+    
+    <Warning>
+    On macOS, you may need to disable Apple's FTDI driver for certain DMX USB interfaces. See the troubleshooting section below.
+    </Warning>
+  </Tab>
+  
+  <Tab title="Linux">
+    ### Linux System Requirements
+    
+    - **Operating System:** Modern Linux distribution (Ubuntu 20.04+, Fedora 35+, Debian 11+, etc.)
+    - **Processor:** Intel Core i3 or equivalent
+    - **RAM:** 2GB minimum, 4GB recommended
+    - **Graphics:** OpenGL 2.0 compatible
+    - **Storage:** 200MB free disk space
+    - **Dependencies:** Qt 5.15+ or Qt 6.x, libasound2 (ALSA), libusb
+    
+    <Info>
+    Linux users will need to configure udev rules for USB DMX interfaces to allow non-root access.
+    </Info>
+  </Tab>
+  
+  <Tab title="Raspberry Pi">
+    ### Raspberry Pi Requirements
+    
+    - **Model:** Raspberry Pi 3 or newer (Pi 4/5 recommended)
+    - **Operating System:** Raspberry Pi OS (Bookworm or newer)
+    - **RAM:** 1GB minimum, 2GB+ recommended
+    - **Storage:** 4GB microSD card minimum, 16GB+ recommended
+    - **Additional:** Official Raspberry Pi image available from QLC+ store
+    
+    <Tip>
+    QLC+ offers a pre-configured Raspberry Pi image that's ready to use for headless lighting control applications.
+    </Tip>
+  </Tab>
+</Tabs>
+
+## Installation Instructions
+
+<Tabs>
+  <Tab title="Windows">
+    ## Installing on Windows
+    
+    <Steps>
+      <Step title="Download the Installer">
+        Visit the [QLC+ download page](https://www.qlcplus.org/download) and download the Windows installer:
+        
+        - **QLC+ 4:** Choose `qlcplus-4.x.x-win64.exe` for the stable Qt Widgets version
+        - **QLC+ 5:** Choose `qlcplus-5.x.x-win64.exe` for the QML version
+        
+        Select the version based on your Qt installation (Qt 5 or Qt 6).
+      </Step>
+      
+      <Step title="Run the Installer">
+        Double-click the downloaded `.exe` file to start the installation wizard.
+        
+        You may see a Windows SmartScreen warning. Click **More info** and then **Run anyway** to proceed.
+      </Step>
+      
+      <Step title="Follow Installation Wizard">
+        - Accept the Apache 2.0 license agreement
+        - Choose the installation directory (default: `C:\qlcplus`)
+        - Select components to install (recommended: all components)
+        - Choose Start Menu folder name
+        - Click **Install** to begin installation
+      </Step>
+      
+      <Step title="Complete Installation">
+        Once installation is complete:
+        - Click **Finish** to exit the installer
+        - Launch QLC+ from the Start Menu or desktop shortcut
+        - The application should start with a new workspace
+      </Step>
+      
+      <Step title="Install USB Drivers (If Needed)">
+        If you're using a USB DMX interface, you may need to install device-specific drivers:
+        
+        - **FTDI-based devices:** Install [FTDI VCP drivers](https://ftdichip.com/drivers/vcp-drivers/)
+        - **Enttec DMX USB Pro:** Usually works with FTDI drivers
+        - **Velleman K8062:** Install drivers from the manufacturer
+        
+        Restart your computer after driver installation.
+      </Step>
+    </Steps>
+    
+    ### Post-Installation Setup
+    
+    After installation, configure your DMX output:
+    
+    1. Open QLC+ and go to **Inputs/Outputs** tab
+    2. Select your DMX interface in the **Output** section
+    3. Configure the universe mapping for your devices
+    4. Test the output using the DMX Monitor
+  </Tab>
+  
+  <Tab title="macOS">
+    ## Installing on macOS
+    
+    <Steps>
+      <Step title="Download the DMG">
+        Visit the [QLC+ download page](https://www.qlcplus.org/download) and download the macOS disk image:
+        
+        - **QLC+ 4:** Choose `qlcplus-4.x.x-macos.dmg` for Intel or Universal build
+        - **QLC+ 5:** Choose `qlcplus-5.x.x-macos.dmg` for the QML version
+        
+        <Note>
+        Universal builds support both Intel and Apple Silicon (M1/M2) processors.
+        </Note>
+      </Step>
+      
+      <Step title="Mount the Disk Image">
+        Double-click the downloaded `.dmg` file to mount it. A Finder window will open showing the QLC+ application.
+      </Step>
+      
+      <Step title="Install the Application">
+        Drag the **QLC+.app** (or **QLC+ 5.app**) icon to the **Applications** folder in the same window.
+        
+        Wait for the copy operation to complete.
+      </Step>
+      
+      <Step title="First Launch">
+        Open the Applications folder and double-click **QLC+** to launch.
+        
+        You may see a security warning: **"QLC+ cannot be opened because it is from an unidentified developer."**
+        
+        To bypass this:
+        1. Open **System Preferences** > **Security & Privacy**
+        2. Click the **General** tab
+        3. Click **Open Anyway** next to the QLC+ message
+        4. Confirm you want to open the application
+      </Step>
+      
+      <Step title="Disable FTDI Driver (If Needed)">
+        If you're using an FTDI-based DMX USB interface, you may need to disable macOS's built-in FTDI driver:
+        
+        ```bash
+        sudo kextunload -b com.apple.driver.AppleUSBFTDI
+        ```
+        
+        <Warning>
+        This command requires administrator privileges and will affect all FTDI devices on your system.
+        </Warning>
+        
+        To make this permanent, follow the [detailed guide](https://docs.qlcplus.org/v4/disable_apple_ftdi_driver.html) in the QLC+ documentation.
+      </Step>
+    </Steps>
+    
+    ### macOS-Specific Notes
+    
+    - QLC+ preferences are stored in `~/Library/Application Support/QLC+`
+    - User fixtures and profiles are stored in the same directory
+    - The web interface runs on port 9999 by default
+  </Tab>
+  
+  <Tab title="Linux">
+    ## Installing on Linux
+    
+    QLC+ can be installed on Linux using several methods:
+    
+    ### Method 1: Distribution Packages (Recommended)
+    
+    <CodeGroup>
+      ```bash Ubuntu/Debian
+      sudo apt update
+      sudo apt install qlcplus
+      ```
+      
+      ```bash Fedora
+      sudo dnf install qlcplus
+      ```
+      
+      ```bash Arch Linux
+      sudo pacman -S qlcplus
+      ```
+    </CodeGroup>
+    
+    <Note>
+    Distribution packages may not always have the latest version. Check your distribution's repository for the available version.
+    </Note>
+    
+    ### Method 2: AppImage (Latest Version)
+    
+    <Steps>
+      <Step title="Download AppImage">
+        Visit the [QLC+ download page](https://www.qlcplus.org/download) and download the AppImage:
+        
+        ```bash
+        wget https://www.qlcplus.org/downloads/qlcplus-4.x.x-x86_64.AppImage
+        ```
+      </Step>
+      
+      <Step title="Make Executable">
+        ```bash
+        chmod +x qlcplus-4.x.x-x86_64.AppImage
+        ```
+      </Step>
+      
+      <Step title="Run QLC+">
+        ```bash
+        ./qlcplus-4.x.x-x86_64.AppImage
+        ```
+        
+        You can move the AppImage to `/usr/local/bin` or `~/bin` for easier access.
+      </Step>
+    </Steps>
+    
+    ### Method 3: Build from Source
+    
+    <Steps>
+      <Step title="Install Dependencies">
+        Install required build tools and libraries:
+        
+        ```bash Ubuntu/Debian
+        sudo apt install build-essential cmake git \
+          qt6-base-dev qt6-multimedia-dev qt6-tools-dev \
+          libqt6svg6-dev libqt6serialport6-dev \
+          libasound2-dev libusb-1.0-0-dev libftdi1-dev
+        ```
+        
+        For Qt 5, replace `qt6-*-dev` with `qt5-*-dev` packages.
+      </Step>
+      
+      <Step title="Clone Repository">
+        ```bash
+        git clone https://github.com/mcallegari/qlcplus.git
+        cd qlcplus
+        ```
+      </Step>
+      
+      <Step title="Build with CMake">
+        ```bash
+        mkdir build && cd build
+        cmake ..
+        make -j$(nproc)
+        ```
+        
+        To build QLC+ 5 (QML UI) instead:
+        ```bash
+        cmake -Dqmlui=ON ..
+        ```
+      </Step>
+      
+      <Step title="Install">
+        ```bash
+        sudo make install
+        ```
+        
+        This installs QLC+ to `/usr` by default.
+      </Step>
+    </Steps>
+    
+    ### Configure USB Permissions
+    
+    To use USB DMX interfaces without root privileges, configure udev rules:
+    
+    <Steps>
+      <Step title="Copy udev Rules">
+        If you installed from source:
+        ```bash
+        sudo cp platforms/linux/udev/*.rules /etc/udev/rules.d/
+        ```
+        
+        For package installations, rules are usually installed automatically.
+      </Step>
+      
+      <Step title="Reload udev">
+        ```bash
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger
+        ```
+      </Step>
+      
+      <Step title="Add User to Groups">
+        ```bash
+        sudo usermod -a -G dialout,plugdev $USER
+        ```
+        
+        Log out and back in for group changes to take effect.
+      </Step>
+    </Steps>
+  </Tab>
+  
+  <Tab title="Raspberry Pi">
+    ## Installing on Raspberry Pi
+    
+    QLC+ runs well on Raspberry Pi 3 and newer models, making it ideal for headless lighting control.
+    
+    ### Method 1: Pre-configured Image (Easiest)
+    
+    <Steps>
+      <Step title="Purchase and Download">
+        The official Raspberry Pi image is available from the [QLC+ Store](https://merch.qlcplus.org/products/qlc-raspberry-pi-image).
+        
+        This image includes:
+        - Pre-configured QLC+ installation
+        - Optimized system settings
+        - Web interface enabled by default
+        - Ready for headless operation
+      </Step>
+      
+      <Step title="Flash to SD Card">
+        Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) or [Etcher](https://www.balena.io/etcher/) to write the image to your microSD card.
+      </Step>
+      
+      <Step title="Boot and Connect">
+        Insert the SD card into your Raspberry Pi and power it on. Access the web interface at:
+        ```
+        http://raspberrypi.local:9999
+        ```
+      </Step>
+    </Steps>
+    
+    ### Method 2: Manual Installation
+    
+    <Steps>
+      <Step title="Install Raspberry Pi OS">
+        Start with a fresh Raspberry Pi OS (32-bit or 64-bit) installation.
+      </Step>
+      
+      <Step title="Update System">
+        ```bash
+        sudo apt update
+        sudo apt upgrade -y
+        ```
+      </Step>
+      
+      <Step title="Install QLC+">
+        ```bash
+        sudo apt install qlcplus
+        ```
+      </Step>
+      
+      <Step title="Enable Web Interface">
+        Create a startup script to launch QLC+ with web access:
+        
+        ```bash
+        sudo nano /etc/systemd/system/qlcplus.service
+        ```
+        
+        Add the following content:
+        ```ini
+        [Unit]
+        Description=QLC+ Lighting Control
+        After=network.target
+        
+        [Service]
+        Type=simple
+        User=pi
+        Environment="DISPLAY=:0"
+        ExecStart=/usr/bin/qlcplus -w -o /home/pi/workspace.qxw
+        Restart=on-failure
+        
+        [Install]
+        WantedBy=multi-user.target
+        ```
+        
+        Enable the service:
+        ```bash
+        sudo systemctl enable qlcplus.service
+        sudo systemctl start qlcplus.service
+        ```
+      </Step>
+      
+      <Step title="Configure Performance">
+        For better performance, disable the desktop environment:
+        
+        ```bash
+        sudo raspi-config
+        ```
+        
+        Navigate to **System Options** > **Boot / Auto Login** > **Console**
+      </Step>
+    </Steps>
+    
+    ### Raspberry Pi-Specific Tips
+    
+    <Tip>
+    Use the GPIO plugin to control simple LED fixtures directly from the Raspberry Pi's GPIO pins without additional DMX hardware.
+    </Tip>
+    
+    - The SPI plugin can drive APA102/SK9822 LED strips directly
+    - The UART plugin can output DMX512 from the serial port
+    - Disable Bluetooth if using the UART for DMX: `sudo systemctl disable hciuart`
+  </Tab>
+</Tabs>
+
+## Verifying Installation
+
+After installation, verify that QLC+ is working correctly:
+
+<Steps>
+  <Step title="Launch QLC+">
+    Open the application from your system's application menu or command line.
+  </Step>
+  
+  <Step title="Check Version">
+    Go to **Help** > **About QLC+** to verify the installed version.
+  </Step>
+  
+  <Step title="Open Inputs/Outputs">
+    Click the **Inputs/Outputs** tab to see available plugins and universes.
+  </Step>
+  
+  <Step title="Test with DMX Monitor">
+    Click the **Monitor** button on the toolbar to open the DMX Monitor and verify the universe display.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="QLC+ won't start on Windows">
+    - Ensure you have installed the correct version matching your Qt installation
+    - Install Microsoft Visual C++ Redistributable if prompted
+    - Check Windows Event Viewer for error messages
+    - Try running as Administrator
+  </Accordion>
+  
+  <Accordion title="DMX interface not detected on Linux">
+    - Check USB cable and connection
+    - Verify udev rules are installed: `ls /etc/udev/rules.d/*qlc*`
+    - Check device permissions: `ls -l /dev/ttyUSB*` or `/dev/ttyACM*`
+    - Ensure user is in dialout group: `groups $USER`
+    - Try unplugging and replugging the device
+  </Accordion>
+  
+  <Accordion title="macOS won't open QLC+ (security warning)">
+    1. Right-click (or Control-click) the QLC+ application
+    2. Select **Open** from the context menu
+    3. Click **Open** in the security dialog
+    
+    Alternatively, use System Preferences > Security & Privacy > General > Open Anyway
+  </Accordion>
+  
+  <Accordion title="Build from source fails">
+    - Ensure all dependencies are installed
+    - Check CMake version: `cmake --version` (requires 3.16+)
+    - Verify Qt installation: `qmake --version`
+    - Check the build log for specific error messages
+    - Consult the [GitHub Wiki](https://github.com/mcallegari/qlcplus/wiki) for platform-specific build instructions
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+Now that you have QLC+ installed, you're ready to create your first lighting scene:
+
+<Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+  Follow our step-by-step guide to set up your first fixture and create a lighting scene
+</Card>

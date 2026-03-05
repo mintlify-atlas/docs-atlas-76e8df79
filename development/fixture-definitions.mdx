@@ -1,0 +1,555 @@
+---
+title: Fixture Definitions
+description: Guide to creating and editing QLC+ fixture definitions (.qxf files)
+---
+
+Fixture definitions describe the capabilities of lighting fixtures to QLC+. They are XML files with a `.qxf` extension that define channels, capabilities, modes, and physical properties.
+
+## What is a Fixture Definition?
+
+A fixture definition maps a physical lighting device's DMX channels and capabilities to QLC+'s internal representation. Each definition includes:
+
+- **Manufacturer and model** information
+- **Channels** (dimmer, color, gobo, etc.)
+- **Channel capabilities** (value ranges and their functions)
+- **Modes** (different DMX channel configurations)
+- **Physical properties** (dimensions, lamp type, power consumption)
+
+## File Structure
+
+### Location
+
+Fixture definitions are stored in:
+
+```
+resources/fixtures/
+├── Manufacturer1/
+│   ├── Fixture1.qxf
+│   └── Fixture2.qxf
+├── Manufacturer2/
+│   └── Fixture3.qxf
+└── ...
+```
+
+### XML Format
+
+All fixture definitions use XML with the schema defined in `resources/schemas/`.
+
+### Basic Structure
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE FixtureDefinition>
+<FixtureDefinition xmlns="http://www.qlcplus.org/FixtureDefinition">
+  <Creator>
+    <Name>Q Light Controller Plus</Name>
+    <Version>4.14.2</Version>
+    <Author>Your Name</Author>
+  </Creator>
+  <Manufacturer>Manufacturer Name</Manufacturer>
+  <Model>Model Name</Model>
+  <Type>Moving Head</Type>
+  
+  <!-- Channels -->
+  <Channel Name="Pan" Preset="PositionPan"/>
+  <Channel Name="Tilt" Preset="PositionTilt"/>
+  
+  <!-- Modes -->
+  <Mode Name="16-bit">
+    <Channel Number="0">Pan</Channel>
+    <Channel Number="1">Tilt</Channel>
+  </Mode>
+</FixtureDefinition>
+```
+
+## Creating Fixture Definitions
+
+### Using the Fixture Editor
+
+QLC+ includes a dedicated fixture editor application:
+
+<Steps>
+  <Step title="Launch Fixture Editor">
+    ```bash
+    # From build directory
+    ./fixtureeditor/qlcplus-fixtureeditor
+    
+    # Or use the target
+    make run-fxe
+    ```
+  </Step>
+
+  <Step title="Create New Definition">
+    - File → New
+    - Enter manufacturer and model
+    - Select fixture type
+  </Step>
+
+  <Step title="Define Channels">
+    - Add channels for each DMX channel
+    - Set channel groups (Intensity, Pan, Tilt, etc.)
+    - Define capabilities with value ranges
+  </Step>
+
+  <Step title="Create Modes">
+    - Add modes for different channel configurations
+    - Assign channels to each mode
+    - Set physical properties per mode if needed
+  </Step>
+
+  <Step title="Save and Test">
+    - Save to `resources/fixtures/Manufacturer/`
+    - Test in QLC+
+    - Validate with fixture validation script
+  </Step>
+</Steps>
+
+### Manual XML Creation
+
+You can also create fixture definitions manually. Start with an existing similar fixture as a template.
+
+## Fixture Components
+
+### Manufacturer and Model
+
+```xml
+<Manufacturer>Chauvet</Manufacturer>
+<Model>Intimidator Spot 350</Model>
+<Type>Moving Head</Type>
+```
+
+**Available Types:**
+- Moving Head
+- Scanner
+- Color Changer
+- Dimmer
+- Strobe
+- Smoke
+- Hazer
+- Fan
+- Flower
+- LED Bar/Strip
+- Other
+
+### Channels
+
+Channels define individual DMX control channels:
+
+<Tabs>
+  <Tab title="Preset Channels">
+    Use predefined channel types:
+    
+    ```xml
+    <Channel Name="Master Dimmer" Preset="IntensityMasterDimmer"/>
+    <Channel Name="Red" Preset="IntensityRed"/>
+    <Channel Name="Green" Preset="IntensityGreen"/>
+    <Channel Name="Blue" Preset="IntensityBlue"/>
+    <Channel Name="Pan" Preset="PositionPan"/>
+    <Channel Name="Tilt" Preset="PositionTilt"/>
+    <Channel Name="Strobe" Preset="ShutterStrobeSlowFast"/>
+    ```
+    
+    Presets automatically configure group, color, and common capabilities.
+  </Tab>
+  
+  <Tab title="Custom Channels">
+    Define channels with custom capabilities:
+    
+    ```xml
+    <Channel Name="Color Wheel">
+      <Group Byte="0">Colour</Group>
+      <Capability Min="0" Max="7">White</Capability>
+      <Capability Min="8" Max="15" Preset="ColorMacro" Res1="#ff0000">Red</Capability>
+      <Capability Min="16" Max="23" Preset="ColorMacro" Res1="#00ff00">Green</Capability>
+      <Capability Min="24" Max="31" Preset="ColorMacro" Res1="#0000ff">Blue</Capability>
+      <Capability Min="32" Max="39" Preset="ColorMacro" Res1="#ffff00">Yellow</Capability>
+      <Capability Min="40" Max="127">Continuous scroll</Capability>
+    </Channel>
+    ```
+  </Tab>
+  
+  <Tab title="16-bit Channels">
+    For fine control (pan/tilt):
+    
+    ```xml
+    <Channel Name="Pan" Preset="PositionPan"/>
+    <Channel Name="Pan Fine" Preset="PositionPanFine"/>
+    <Channel Name="Tilt" Preset="PositionTilt"/>
+    <Channel Name="Tilt Fine" Preset="PositionTiltFine"/>
+    ```
+  </Tab>
+</Tabs>
+
+### Channel Groups
+
+Channels must be assigned to groups:
+
+- **Intensity** - Dimmer, RGB, CMY, white
+- **Colour** - Color wheels, macros
+- **Gobo** - Gobo wheels
+- **Shutter** - Strobe, shutter
+- **Speed** - Speed control
+- **Pan** - Horizontal movement
+- **Tilt** - Vertical movement
+- **Prism** - Prism effects
+- **Beam** - Beam shaper, zoom, focus, iris
+- **Effect** - Special effects
+- **Maintenance** - Reset, lamp control
+- **Nothing** - Unused/reserved channels
+
+### Capabilities
+
+Capabilities define what each DMX value range does:
+
+```xml
+<Channel Name="Gobo">
+  <Group Byte="0">Gobo</Group>
+  <Capability Min="0" Max="7" Preset="GoboMacro" Res1="Others/open.svg">Open</Capability>
+  <Capability Min="8" Max="15" Preset="GoboMacro" Res1="Chauvet/gobo00001.svg">Gobo 1</Capability>
+  <Capability Min="16" Max="23" Preset="GoboMacro" Res1="Chauvet/gobo00002.svg">Gobo 2</Capability>
+  <Capability Min="24" Max="127">Gobo shake slow to fast</Capability>
+  <Capability Min="128" Max="255">Scroll slow to fast</Capability>
+</Channel>
+```
+
+**Common Capability Attributes:**
+
+<ParamField path="Min" type="integer" required>
+  Minimum DMX value (0-255)
+</ParamField>
+
+<ParamField path="Max" type="integer" required>
+  Maximum DMX value (0-255)
+</ParamField>
+
+<ParamField path="Preset" type="string">
+  Predefined capability type (ColorMacro, GoboMacro, etc.)
+</ParamField>
+
+<ParamField path="Res1" type="string">
+  Resource reference (color value, gobo image path)
+</ParamField>
+
+<ParamField path="Res2" type="string">
+  Secondary resource (for two-color capabilities)
+</ParamField>
+
+### Modes
+
+Modes define different DMX channel layouts:
+
+```xml
+<Mode Name="8-bit">
+  <Channel Number="0">Pan</Channel>
+  <Channel Number="1">Tilt</Channel>
+  <Channel Number="2">Dimmer</Channel>
+  <Channel Number="3">Strobe</Channel>
+  <Channel Number="4">Color Wheel</Channel>
+  <Channel Number="5">Gobo</Channel>
+  <Physical>
+    <Bulb Type="LED" Lumens="3000" ColourTemperature="6500"/>
+    <Dimensions Weight="5.5" Width="250" Height="320" Depth="180"/>
+    <Lens Name="PC" DegreesMin="15" DegreesMax="15"/>
+    <Focus Type="Head" PanMax="540" TiltMax="270"/>
+  </Physical>
+</Mode>
+
+<Mode Name="16-bit">
+  <Channel Number="0">Pan</Channel>
+  <Channel Number="1">Pan Fine</Channel>
+  <Channel Number="2">Tilt</Channel>
+  <Channel Number="3">Tilt Fine</Channel>
+  <Channel Number="4">Dimmer</Channel>
+  <!-- ... -->
+</Mode>
+```
+
+### Physical Properties
+
+<CodeGroup>
+```xml Bulb
+<Bulb Type="LED" Lumens="10000" ColourTemperature="6500"/>
+<!-- Or -->
+<Bulb Type="MSD 250W" Lumens="18000" ColourTemperature="8500"/>
+```
+
+```xml Dimensions
+<Dimensions Weight="15.5" Width="350" Height="450" Depth="300"/>
+<!-- Weight in kg, dimensions in mm -->
+```
+
+```xml Lens
+<Lens Name="PC" DegreesMin="10" DegreesMax="40"/>
+<!-- Beam angle range -->
+```
+
+```xml Focus
+<Focus Type="Head" PanMax="540" TiltMax="270"/>
+<!-- Movement ranges in degrees -->
+<Focus Type="Mirror" PanMax="180" TiltMax="90"/>
+<!-- For scanner fixtures -->
+<Focus Type="Fixed"/>
+<!-- For non-moving fixtures -->
+```
+
+```xml Technical
+<Technical PowerConsumption="250" DmxConnector="3-pin and 5-pin"/>
+<!-- Power in watts -->
+```
+</CodeGroup>
+
+## Example: Complete Fixture
+
+Based on the ADB-ALC4.qxf file:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE FixtureDefinition>
+<FixtureDefinition xmlns="http://www.qlcplus.org/FixtureDefinition">
+  <Creator>
+    <Name>Q Light Controller Plus</Name>
+    <Version>4.12.1 GIT</Version>
+    <Author>Thierry Rodolfo</Author>
+  </Creator>
+  <Manufacturer>ADB</Manufacturer>
+  <Model>ALC4</Model>
+  <Type>Color Changer</Type>
+  
+  <Channel Name="Master Dimmer" Preset="IntensityMasterDimmer"/>
+  <Channel Name="CT Preset">
+    <Group Byte="0">Colour</Group>
+    <Capability Min="0" Max="76">RGB Mode</Capability>
+    <Capability Min="77" Max="101">White 2700K</Capability>
+    <Capability Min="102" Max="127">White 3000K</Capability>
+    <Capability Min="128" Max="152">White 3200K</Capability>
+    <Capability Min="153" Max="178">White 4200K</Capability>
+    <Capability Min="179" Max="203">White 5600K</Capability>
+    <Capability Min="204" Max="229">White 6000K</Capability>
+    <Capability Min="230" Max="255">White 6500K</Capability>
+  </Channel>
+  <Channel Name="Red" Preset="IntensityRed"/>
+  <Channel Name="Green" Preset="IntensityGreen"/>
+  <Channel Name="Blue" Preset="IntensityBlue"/>
+  
+  <Mode Name="5 Channel">
+    <Channel Number="0">Master Dimmer</Channel>
+    <Channel Number="1">CT Preset</Channel>
+    <Channel Number="2">Red</Channel>
+    <Channel Number="3">Green</Channel>
+    <Channel Number="4">Blue</Channel>
+  </Mode>
+</FixtureDefinition>
+```
+
+## Validation
+
+### Automatic Validation
+
+Fixture definitions are validated during testing (platforms/linux/unittest.sh:52-59):
+
+```bash
+pushd resources/fixtures/scripts
+./check
+RET=$?
+popd
+if [ $RET -ne 0 ]; then
+    echo "Fixture definitions are not valid. Please fix before commit."
+    exit $RET
+fi
+```
+
+### Manual Validation
+
+Validate a single fixture:
+
+```bash
+cd resources/fixtures/scripts
+./check.sh ../Manufacturer/Fixture.qxf
+```
+
+Or use xmllint directly:
+
+```bash
+xmlint --noout --schema resources/schemas/fixture.xsd \
+  resources/fixtures/Manufacturer/Fixture.qxf
+```
+
+## Best Practices
+
+### Naming Conventions
+
+<AccordionGroup>
+  <Accordion title="File Names">
+    ```
+    Manufacturer-Model.qxf
+    Manufacturer-Model-Variant.qxf
+    
+    Examples:
+    Chauvet-Intimidator-Spot-350.qxf
+    Martin-MAC-250-Entour.qxf
+    ```
+  </Accordion>
+
+  <Accordion title="Channel Names">
+    Use clear, standard names:
+    - "Pan" not "X axis"
+    - "Tilt" not "Y axis"
+    - "Master Dimmer" not just "Dimmer" for master intensity
+    - "Strobe" not "Shutter" when it's a strobe function
+  </Accordion>
+
+  <Accordion title="Mode Names">
+    Describe the mode clearly:
+    - "8-bit" / "16-bit" for precision differences
+    - "Basic" / "Advanced" / "Extended" for feature sets
+    - "1 Channel" / "3 Channel" / "7 Channel" for channel count
+  </Accordion>
+</AccordionGroup>
+
+### Channel Organization
+
+<Steps>
+  <Step title="Use presets when possible">
+    Presets ensure consistency and save time:
+    
+    ```xml
+    <Channel Name="Pan" Preset="PositionPan"/>
+    <Channel Name="Dimmer" Preset="IntensityDimmer"/>
+    ```
+  </Step>
+
+  <Step title="Define capabilities precisely">
+    Match the fixture's manual exactly:
+    
+    ```xml
+    <!-- Good -->
+    <Capability Min="0" Max="7">No function</Capability>
+    <Capability Min="8" Max="255">Strobe slow to fast</Capability>
+    
+    <!-- Bad - gaps in range -->
+    <Capability Min="0" Max="10">No function</Capability>
+    <Capability Min="20" Max="255">Strobe</Capability>
+    ```
+  </Step>
+
+  <Step title="Include all modes">
+    Add all DMX modes from the fixture manual, even if similar.
+  </Step>
+
+  <Step title="Set physical properties">
+    Complete physical data helps with visualization and power calculation.
+  </Step>
+</Steps>
+
+### Testing Your Fixture
+
+<Steps>
+  <Step title="Validate XML">
+    ```bash
+    make check
+    ```
+  </Step>
+
+  <Step title="Load in QLC+">
+    - Open QLC+
+    - Add your fixture
+    - Test all channels and capabilities
+  </Step>
+
+  <Step title="Test with real hardware">
+    If possible, test with the actual fixture to verify correct operation.
+  </Step>
+
+  <Step title="Test all modes">
+    Ensure each mode works correctly and channels are properly mapped.
+  </Step>
+</Steps>
+
+## Common Channel Presets
+
+<CardGroup cols={2}>
+  <Card title="Intensity" icon="sun">
+    ```xml
+    IntensityMasterDimmer
+    IntensityDimmer
+    IntensityRed
+    IntensityGreen
+    IntensityBlue
+    IntensityWhite
+    IntensityCyan
+    IntensityMagenta
+    IntensityYellow
+    IntensityAmber
+    IntensityUV
+    ```
+  </Card>
+  
+  <Card title="Position" icon="arrows-up-down-left-right">
+    ```xml
+    PositionPan
+    PositionPanFine
+    PositionTilt
+    PositionTiltFine
+    PositionXAxis
+    PositionYAxis
+    ```
+  </Card>
+  
+  <Card title="Shutter" icon="camera">
+    ```xml
+    ShutterStrobeSlowFast
+    ShutterStrobeFastSlow
+    ShutterIrisMinToMax
+    ShutterIrisMaxToMin
+    ```
+  </Card>
+  
+  <Card title="Color" icon="palette">
+    ```xml
+    ColorMacro
+    ColorWheelIndex
+    ColorWheel
+    ```
+  </Card>
+</CardGroup>
+
+## Contributing Fixtures
+
+### Submission Process
+
+<Steps>
+  <Step title="Create the fixture definition">
+    Use the Fixture Editor or manual XML editing.
+  </Step>
+
+  <Step title="Validate">
+    ```bash
+    make check
+    ```
+  </Step>
+
+  <Step title="Test thoroughly">
+    Test all channels and modes in QLC+.
+  </Step>
+
+  <Step title="Submit via GitHub">
+    - Fork the repository
+    - Add your fixture to `resources/fixtures/Manufacturer/`
+    - Create a pull request
+    - Include fixture manual PDF or link if possible
+  </Step>
+</Steps>
+
+### What to Include
+
+- Complete fixture definition file
+- Reference to fixture manual (URL or PDF)
+- Test results (if tested with real hardware)
+- Photos/videos of the fixture (optional but helpful)
+
+## Resources
+
+- [Fixture Editor Documentation](https://docs.qlcplus.org/v4/fixtureeditor)
+- [Fixture XML Schema](https://github.com/mcallegari/qlcplus/tree/master/resources/schemas)
+- [Existing Fixtures](https://github.com/mcallegari/qlcplus/tree/master/resources/fixtures) for reference
+- [Contributing Guidelines](/development/contributing)

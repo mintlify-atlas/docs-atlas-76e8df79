@@ -1,0 +1,425 @@
+---
+title: Web Access
+description: Browser-based remote control interface for QLC+
+---
+
+Web Access provides a powerful browser-based interface for remotely controlling QLC+. Access your lighting setup from any device with a web browser, including smartphones, tablets, and computers.
+
+## Overview
+
+Web Access features:
+- Browser-based control (no app required)
+- Virtual Console remote access
+- Simple Desk web interface
+- WebSocket real-time updates
+- Multi-user support
+- Authentication and security
+- Responsive mobile-friendly design
+
+## Architecture
+
+### HTTP Server
+
+Web Access runs an embedded HTTP server:
+
+```cpp
+// From webaccess.h:43
+class WebAccess final : public WebAccessBase
+{
+    Q_OBJECT
+public:
+    explicit WebAccess(Doc *doc, VirtualConsole *vcInstance, 
+                      SimpleDesk *sdInstance,
+                      int portNumber, bool enableAuth, 
+                      QString passwdFile = QString(),
+                      QObject *parent = 0);
+};
+```
+
+**Constructor Parameters**:
+- `doc`: Reference to the QLC+ document
+- `vcInstance`: Virtual Console instance for widget rendering
+- `sdInstance`: Simple Desk instance for direct DMX control
+- `portNumber`: TCP port for the web server (default: 9999)
+- `enableAuth`: Enable password authentication
+- `passwdFile`: Path to password file
+
+### WebSocket Communication
+
+Real-time updates use WebSocket protocol:
+
+```cpp
+// From webaccess.h:73
+protected slots:
+    void slotHandleWebSocketRequest(QHttpConnection *conn, QString data) override;
+    void slotHandleWebSocketClose(QHttpConnection *conn) override;
+```
+
+WebSocket provides:
+- Bi-directional communication
+- Low latency updates
+- Efficient data transfer
+- Persistent connections
+
+<Note>
+WebSocket connections remain open, allowing the server to push updates to the browser instantly when fixture values or widget states change.
+</Note>
+
+## Virtual Console Access
+
+### Widget Rendering
+
+Virtual Console widgets are rendered as HTML:
+
+```cpp
+// From webaccess.h:54
+QString getWidgetHTML(const VCWidget *widget) const;
+QString getFrameHTML(const VCFrame *frame);
+QString getSoloFrameHTML(const VCSoloFrame *frame);
+QString getButtonHTML(const VCButton *btn) const;
+QString getSliderHTML(const VCSlider *slider);
+QString getLabelHTML(const VCLabel *label) const;
+QString getAudioTriggersHTML(const VCAudioTriggers *triggers) const;
+QString getCueListHTML(const VCCueList *cue);
+QString getClockHTML(const VCClock *clock) const;
+QString getMatrixHTML(const VCMatrix *matrix);
+```
+
+Supported widgets:
+- **Buttons**: Start/stop functions
+- **Sliders**: Value control
+- **Frames**: Widget containers
+- **Solo Frames**: Page-based containers
+- **Cue Lists**: Step-through sequences
+- **Labels**: Text display
+- **Audio Triggers**: Audio-reactive controls
+- **Clocks**: Time display
+- **Matrices**: RGB matrix control
+
+### Complete Virtual Console
+
+```cpp
+// From webaccess.h:67
+QString getChildrenHTML(const VCWidget *frame, int pagesNum, 
+                       int currentPageIdx);
+QString getVCHTML();
+```
+
+The complete Virtual Console is rendered recursively:
+1. Start with root frame
+2. Render each child widget
+3. Handle nested frames
+4. Apply styling and layout
+
+<Steps>
+  <Step title="Open Browser">
+    Navigate to http://[QLC+_IP]:9999
+  </Step>
+  <Step title="Authenticate">
+    Enter password if authentication is enabled
+  </Step>
+  <Step title="Select View">
+    Choose Virtual Console or Simple Desk tab
+  </Step>
+  <Step title="Control">
+    Interact with widgets as you would in QLC+
+  </Step>
+</Steps>
+
+## Simple Desk Web Interface
+
+### Web-based Simple Desk
+
+```cpp
+// From webaccess.h:69
+QString getSimpleDeskHTML() const;
+```
+
+The web Simple Desk provides:
+- Channel sliders (32 per page)
+- Universe selection
+- Page navigation
+- Value display
+- Reset controls
+
+### Integration with Simple Desk
+
+The web interface communicates with the Simple Desk backend:
+
+```cpp
+// From simpledesk.h:110
+/** Web access helpers (absolute address based) */
+int getSlidersNumber() const;
+int getCurrentUniverseIndex() const;
+int getCurrentPage() const;
+uchar getAbsoluteChannelValue(uint address) const;
+bool isChannelOverridden(uint address) const;
+void setAbsoluteChannelValue(uint address, uchar value);
+void resetAbsoluteChannel(uint address);
+```
+
+<Info>
+The web Simple Desk displays 32 channels per page. Use page navigation to access all 512 channels of the universe.
+</Info>
+
+## Real-time Updates
+
+### Widget State Changes
+
+Widget state changes are pushed to connected browsers:
+
+```cpp
+// From webaccess.h:80
+protected slots:
+    void slotButtonStateChanged(int state);
+    void slotButtonDisableStateChanged(bool disable);
+    void slotLabelDisableStateChanged(bool disable);
+    void slotSliderValueChanged(QString val);
+    void slotSliderDisableStateChanged(bool disable);
+    void slotAudioTriggersToggled(bool toggle);
+    void slotCueIndexChanged(int idx);
+    void slotCueStepNoteChanged(int idx, QString note);
+```
+
+These slots receive signals from Virtual Console widgets and broadcast updates via WebSocket.
+
+### Function Status
+
+```cpp
+// From webaccess.h:76
+protected slots:
+    void slotFunctionStarted(quint32 fid) override;
+    void slotFunctionStopped(quint32 fid) override;
+```
+
+Function start/stop events update:
+- Button colors (active/inactive)
+- Cue list position
+- Status indicators
+
+### Grand Master
+
+```cpp
+// From webaccess.h:102
+protected slots:
+    void slotGrandMasterValueChanged(uchar value);
+```
+
+Grand Master slider is synchronized across all clients.
+
+## Authentication
+
+### Password Protection
+
+When authentication is enabled:
+
+1. Browser requests a page
+2. Server checks for valid session
+3. If no session, redirect to login
+4. On successful login, create session cookie
+5. Grant access to protected resources
+
+### Password File Format
+
+The password file is a simple text file:
+```
+username:password
+```
+
+<Note>
+For production use, consider using HTTPS and strong passwords. The embedded server supports basic authentication but not encryption by default.
+</Note>
+
+## Resource Files
+
+### JavaScript and CSS
+
+```cpp
+// From webaccess.h:105
+protected:
+    QString m_JScode;
+    QString m_CSScode;
+```
+
+Web Access includes:
+- **JavaScript**: Client-side logic and WebSocket handling
+- **CSS**: Responsive styling for mobile and desktop
+- **HTML**: Widget rendering templates
+
+### Static Resources
+
+Static files served:
+- `webaccess-v5.html`: Main HTML page
+- `webaccess-v5.js`: JavaScript code
+- `webaccess-v5.css`: Stylesheet
+- `simpledesk-v5.js`: Simple Desk JavaScript
+- `simpledesk-v5.css`: Simple Desk stylesheet
+
+## Project Management
+
+### Remote Project Load
+
+```cpp
+// From webaccess.h:108
+protected:
+    void handleProjectLoad(const QByteArray &projectXml) override;
+```
+
+Web Access can:
+- Load projects remotely
+- Upload workspace files
+- Store fixture definitions
+- Manage autostart projects
+
+```cpp
+// From webaccess.h:109
+bool storeFixtureDefinition(const QString &fxName, 
+                           const QByteArray &fixtureXML) override;
+void handleAutostartProject(const QString &path) override;
+```
+
+### Signals for Document Control
+
+```cpp
+// From webaccess.h:112
+signals:
+    void toggleDocMode();
+    void loadProject(QString xmlData);
+    void storeAutostartProject(QString filename);
+```
+
+<Info>
+Remote project management allows you to configure QLC+ headless installations without physical access to the machine.
+</Info>
+
+## Multi-User Support
+
+### Concurrent Connections
+
+Web Access supports multiple simultaneous connections:
+- Each browser gets its own WebSocket connection
+- State changes are broadcast to all connected clients
+- Users see the same Virtual Console state
+- Changes from one user are visible to others
+
+### Connection Tracking
+
+```cpp
+// From webaccess.h:74
+void slotHandleWebSocketClose(QHttpConnection *conn) override;
+```
+
+The server tracks:
+- Active WebSocket connections
+- Client IP addresses
+- Connection timestamps
+- Session states
+
+## Mobile Optimization
+
+### Responsive Design
+
+The web interface adapts to screen size:
+- Touch-friendly buttons (larger hit areas)
+- Swipe gestures for sliders
+- Responsive layout for phones/tablets
+- Portrait and landscape support
+
+### Performance Considerations
+
+- Efficient WebSocket messages (minimal data)
+- Throttled updates (prevent flooding)
+- Client-side rendering (reduce server load)
+- Compressed assets
+
+## Configuration
+
+### Server Settings
+
+1. **Port Number**: Default 9999, configurable in settings
+2. **Authentication**: Enable/disable password protection
+3. **Password File**: Path to credentials file
+4. **Auto-start**: Launch Web Access with QLC+
+
+### Network Configuration
+
+For remote access:
+- Ensure port is open in firewall
+- Configure port forwarding if needed
+- Use static IP or DNS name
+- Consider VPN for security
+
+<Steps>
+  <Step title="Enable Web Access">
+    Go to Settings → Web Access
+  </Step>
+  <Step title="Configure Port">
+    Set desired port number (default: 9999)
+  </Step>
+  <Step title="Enable Authentication">
+    Turn on password protection and set password file
+  </Step>
+  <Step title="Start Server">
+    Toggle Web Access on
+  </Step>
+  <Step title="Test Connection">
+    Open browser to http://localhost:9999
+  </Step>
+</Steps>
+
+## Best Practices
+
+- **Security**: Always use authentication on public networks
+- **Network**: Use reliable WiFi or wired connection
+- **Browsers**: Modern browsers work best (Chrome, Firefox, Safari)
+- **Testing**: Test thoroughly before live events
+- **Backup Control**: Keep traditional interface available as backup
+- **Documentation**: Document IP address and port for operators
+- **Updates**: Keep QLC+ updated for latest web features
+
+## Troubleshooting
+
+### Connection Issues
+
+**Can't connect**: Check firewall, port, and IP address
+
+**Slow updates**: Verify network quality, reduce number of widgets
+
+**WebSocket errors**: Check browser console, try different browser
+
+### Performance Issues
+
+**Laggy interface**: Reduce update rate, simplify Virtual Console
+
+**High CPU**: Limit active widgets, reduce WebSocket clients
+
+**Memory usage**: Restart Web Access periodically for long-running shows
+
+## Technical Notes
+
+### WebSocket Protocol
+
+Messages are JSON-formatted:
+```json
+{
+  "type": "widgetUpdate",
+  "id": 123,
+  "property": "value",
+  "value": 128
+}
+```
+
+### HTTP Endpoints
+
+- `GET /`: Main interface page
+- `GET /vc`: Virtual Console view
+- `GET /simpledesk`: Simple Desk view
+- `POST /loadProject`: Upload project
+- `GET /ws`: WebSocket upgrade endpoint
+
+### Browser Compatibility
+
+- Chrome/Edge: Full support
+- Firefox: Full support
+- Safari: Full support (iOS 11+)
+- Internet Explorer: Not supported

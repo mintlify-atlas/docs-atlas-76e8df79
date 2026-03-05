@@ -1,0 +1,348 @@
+---
+title: Building QLC+
+description: Complete guide to building QLC+ from source on Linux, Windows, and macOS
+---
+
+QLC+ uses CMake as its build system and supports Qt5 and Qt6. This guide covers building QLC+ from source on all supported platforms.
+
+## Prerequisites
+
+### All Platforms
+
+- **CMake** 3.16 or later
+- **Qt** 5.x or 6.x with the following modules:
+  - Core, Gui, Multimedia, MultimediaWidgets, Network, PrintSupport
+  - Qml, Quick, Svg, Test, Widgets, LinguistTools
+  - For QML UI (QLC+ 5): 3DCore, 3DInput, 3DLogic, 3DQuick, 3DQuickExtras, 3DRender, WebSockets
+- **pkg-config**
+- **C++ compiler** with C++11 support
+
+### Linux
+
+```bash
+# Debian/Ubuntu
+sudo apt-get install build-essential cmake pkg-config qtbase5-dev \
+  qtmultimedia5-dev qtscript5-dev libqt5svg5-dev libqt5serialport5-dev \
+  qttools5-dev qttools5-dev-tools
+
+# For QML UI (QLC+ 5)
+sudo apt-get install qt5-3d qt5-websockets
+```
+
+### macOS
+
+```bash
+brew install qt cmake pkg-config
+```
+
+### Windows
+
+- Install Qt from [qt.io](https://www.qt.io/download)
+- Install CMake from [cmake.org](https://cmake.org/download/)
+- Install Visual Studio or MinGW
+
+## Build Configuration
+
+### Project Version
+
+The project is configured in the root `CMakeLists.txt:2`:
+
+```cmake
+project(qlcplus VERSION 4.14.2 LANGUAGES C CXX)
+```
+
+### Build Types
+
+Available build types:
+- **Debug** (default) - Debug symbols, no optimizations
+- **Release** - Optimizations enabled, no debug symbols
+- **RelWithDebInfo** - Optimizations + debug symbols
+- **MinSizeRel** - Size optimizations
+
+### Build Options
+
+<ParamField path="qmlui" type="boolean" default="OFF">
+  Build QLC+ 5 with QML UI instead of QtWidgets UI (QLC+ 4)
+</ParamField>
+
+<ParamField path="INSTALL_ROOT" type="string" default="/">
+  Installation root directory
+</ParamField>
+
+## Building on Linux
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/mcallegari/qlcplus.git
+    cd qlcplus
+    ```
+  </Step>
+
+  <Step title="Create build directory">
+    ```bash
+    mkdir build
+    cd build
+    ```
+  </Step>
+
+  <Step title="Configure with CMake">
+    ```bash
+    # For QLC+ 4 (QtWidgets UI)
+    cmake ..
+
+    # For QLC+ 5 (QML UI)
+    cmake -Dqmlui=ON ..
+
+    # Release build
+    cmake -DCMAKE_BUILD_TYPE=Release ..
+    ```
+  </Step>
+
+  <Step title="Build">
+    ```bash
+    # Build all targets
+    make -j$(nproc)
+
+    # Build specific targets
+    make qlcplus          # Main application
+    make qlcplus-fixtureeditor  # Fixture editor
+    ```
+  </Step>
+
+  <Step title="Install (optional)">
+    ```bash
+    sudo make install
+    ```
+  </Step>
+</Steps>
+
+### Running Without Installing
+
+On Unix systems, use the custom `run` target:
+
+```bash
+# From build directory
+make run
+
+# Or run the fixture editor
+make run-fxe
+```
+
+This sets the proper `LD_LIBRARY_PATH` automatically (CMakeLists.txt:188-193).
+
+## Building on macOS
+
+Follow the same steps as Linux, but ensure Qt is in your PATH:
+
+```bash
+export CMAKE_PREFIX_PATH="/usr/local/opt/qt"
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j$(sysctl -n hw.ncpu)
+```
+
+### Creating DMG Package
+
+```bash
+./create-dmg.sh
+```
+
+## Building on Windows
+
+<Steps>
+  <Step title="Open Qt Command Prompt">
+    Use the Qt environment that matches your compiler (MSVC or MinGW)
+  </Step>
+
+  <Step title="Configure">
+    ```bash
+    mkdir build
+    cd build
+    cmake -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release ..
+    ```
+  </Step>
+
+  <Step title="Build">
+    ```bash
+    nmake
+    ```
+  </Step>
+</Steps>
+
+### Creating Installer
+
+```bash
+bash create-exe.sh
+```
+
+## Build Targets
+
+### Standard Targets
+
+<CodeGroup>
+```bash All
+make              # Build everything
+make qlcplus      # Main application
+make check        # Run unit tests
+make translations # Generate translation files
+```
+
+```bash QML UI Only
+make qlcplus-qml  # QML UI application
+```
+
+```bash QtWidgets Only
+make qlcplus-fixtureeditor  # Fixture editor
+make qlcplus      # Main application
+```
+</CodeGroup>
+
+### Testing Targets
+
+```bash
+# Run all unit tests
+make check
+
+# Run unit tests manually
+make unittests
+
+# Generate test coverage (Linux/macOS only)
+make coverage
+make lcov
+```
+
+See [Testing](/development/testing) for more details.
+
+### Development Targets
+
+```bash
+# Run application from build directory (Unix only)
+make run
+make run-fxe      # Run fixture editor
+
+# Generate Doxygen documentation (Unix only)
+make doxygen
+
+# Uninstall
+make uninstall
+```
+
+## Project Structure
+
+The build system is organized into subdirectories (CMakeLists.txt:73-89):
+
+- **hotplugmonitor/** - USB device hotplug detection
+- **engine/** - Core engine library
+- **resources/** - Fixtures, icons, translations
+- **plugins/** - I/O plugins (DMX, Art-Net, etc.)
+- **webaccess/** - Web interface
+- **qmlui/** - QML UI (QLC+ 5)
+- **ui/** - QtWidgets UI (QLC+ 4)
+- **main/** - Main application entry point
+- **fixtureeditor/** - Fixture definition editor
+- **launcher/** - macOS launcher
+- **platforms/** - Platform-specific packaging
+
+## Troubleshooting
+
+### Full Rebuild Required
+
+If you encounter unresolved symbols or linking errors after `git pull`, perform a clean rebuild:
+
+```bash
+cd build
+make clean
+make -j$(nproc)
+```
+
+Dependencies between objects can sometimes require full package recompilation rather than incremental builds.
+
+### Library Not Found at Runtime
+
+On Linux, if libraries are not found:
+
+```bash
+export LD_LIBRARY_PATH=/path/to/build/engine/src:/path/to/build/ui/src:$LD_LIBRARY_PATH
+./main/qlcplus
+```
+
+Or use the `make run` target which handles this automatically.
+
+### Qt Version Conflicts
+
+Ensure you're using the correct Qt version:
+
+```bash
+# Check Qt version
+qmake --version
+
+# Set Qt path explicitly
+export CMAKE_PREFIX_PATH=/path/to/qt
+```
+
+### Missing Platform Headers
+
+**Linux:** Install udev development headers:
+```bash
+sudo apt-get install libudev-dev
+```
+
+**macOS:** IOKit is automatically detected (CMakeLists.txt:18-19).
+
+## Cross-Platform Notes
+
+### Installation Paths
+
+The build system uses `CMAKE_INSTALL_RPATH_USE_LINK_PATH` to preserve library paths (CMakeLists.txt:13).
+
+### Shared Library Prefix
+
+On Windows, the shared library prefix is set to empty (CMakeLists.txt:70):
+
+```cmake
+if(WIN32)
+  set(CMAKE_SHARED_LIBRARY_PREFIX "")
+endif()
+```
+
+### Android/iOS
+
+Building for mobile automatically enables QML UI (CMakeLists.txt:25-27):
+
+```cmake
+if (ANDROID OR IOS)
+  set(qmlui ON)
+endif()
+```
+
+Refer to platform-specific documentation in the [GitHub Wiki](https://github.com/mcallegari/qlcplus/wiki).
+
+## Packaging
+
+<CodeGroup>
+```bash Debian/Ubuntu
+./create-deb.sh
+```
+
+```bash RPM
+./create-rpm.sh
+```
+
+```bash AppImage
+./create-appimage.sh
+```
+
+```bash macOS
+./create-dmg.sh
+```
+
+```bash Windows
+bash create-exe.sh
+```
+</CodeGroup>
+
+## Next Steps
+
+- Read [Contributing Guidelines](/development/contributing)
+- Learn about [Testing](/development/testing)
+- Explore the [Architecture](/development/architecture)

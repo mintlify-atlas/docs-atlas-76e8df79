@@ -1,0 +1,395 @@
+---
+title: "EFX (Effects)"
+description: "Mathematical pattern generation for automated movement and position effects"
+---
+
+## Overview
+
+An EFX (Effects) function creates automated patterns for moving lights and other position-capable fixtures. EFX uses mathematical algorithms to generate smooth, repeating movement patterns like circles, figure-eights, and waves.
+
+<Note>
+EFX is specifically designed for fixtures with Pan/Tilt channels or other position-based controls. It calculates DMX values mathematically rather than storing static scenes.
+</Note>
+
+## When to Use EFX
+
+<CardGroup cols={2}>
+  <Card title="Moving Head Patterns" icon="rotate">
+    Create circular, sweeping, or figure-8 movements automatically
+  </Card>
+  <Card title="Synchronized Movement" icon="arrows-split-up-and-left">
+    Multiple fixtures moving in coordinated patterns
+  </Card>
+  <Card title="Dynamic Effects" icon="wand-magic-sparkles">
+    Generate complex movements without manual programming
+  </Card>
+  <Card title="Beat-Synced Motion" icon="music">
+    Sync movement patterns to music tempo
+  </Card>
+</CardGroup>
+
+## Algorithm Types
+
+EFX provides 10 built-in mathematical algorithms:
+
+```cpp
+enum Algorithm {
+    Circle,          // Circular pattern
+    Eight,           // Figure-eight pattern
+    Line,            // Diagonal line
+    Line2,           // Linear sweep
+    Diamond,         // Diamond shape
+    Square,          // Square pattern
+    SquareChoppy,    // Square with hard corners
+    SquareTrue,      // Perfect square corners
+    Leaf,            // Leaf-shaped pattern
+    Lissajous        // Lissajous curve (complex waves)
+};
+```
+
+### Algorithm Comparison
+
+<CardGroup cols={3}>
+  <Card title="Circle" icon="circle">
+    Smooth circular motion, ideal for spotlight effects
+  </Card>
+  <Card title="Eight" icon="infinity">
+    Figure-eight pattern for dynamic sweeps
+  </Card>
+  <Card title="Line" icon="minus">
+    Diagonal line movement
+  </Card>
+  <Card title="Diamond" icon="diamond">
+    Diamond-shaped pattern with smooth curves
+  </Card>
+  <Card title="Square" icon="square">
+    Square pattern with smooth corners
+  </Card>
+  <Card title="Lissajous" icon="wave-square">
+    Complex mathematical curves with frequency control
+  </Card>
+</CardGroup>
+
+## Key Properties
+
+The EFX class (efx.h:75) provides extensive control:
+
+### Pattern Dimensions
+
+<ParamField path="width" type="int" default="127">
+  Pattern width (0-255). Controls horizontal scale.
+</ParamField>
+
+<ParamField path="height" type="int" default="127">
+  Pattern height (0-255). Controls vertical scale.
+</ParamField>
+
+<ParamField path="rotation" type="int" default="0">
+  Pattern rotation in degrees (0-359). Rotates the entire pattern.
+</ParamField>
+
+### Pattern Position
+
+<ParamField path="xOffset" type="int" default="127">
+  X-axis offset (0-255, 127 = center). Shifts pattern horizontally.
+</ParamField>
+
+<ParamField path="yOffset" type="int" default="127">
+  Y-axis offset (0-255, 127 = center). Shifts pattern vertically.
+</ParamField>
+
+<ParamField path="startOffset" type="int" default="0">
+  Start position in degrees (0-359). Where fixtures begin in the pattern.
+</ParamField>
+
+### Pattern Behavior
+
+<ParamField path="isRelative" type="bool" default="false">
+  If true, pattern is relative to current fixture position. If false, pattern is absolute.
+</ParamField>
+
+## Class Methods
+
+### Algorithm Control
+
+```cpp
+// Set the algorithm
+void setAlgorithm(Algorithm algo);
+Algorithm algorithm() const;
+
+// Get list of available algorithms
+static QStringList algorithmList();
+
+// Convert between algorithm and string
+static QString algorithmToString(Algorithm algo);
+static Algorithm stringToAlgorithm(const QString& str);
+```
+
+### Pattern Parameters
+
+```cpp
+// Width and height
+void setWidth(int width);
+int width() const;
+void setHeight(int height);
+int height() const;
+
+// Rotation
+void setRotation(int rot);
+int rotation() const;
+
+// Offsets
+void setXOffset(int offset);
+int xOffset() const;
+void setYOffset(int offset);
+int yOffset() const;
+void setStartOffset(int startOffset);
+int startOffset() const;
+
+// Relative mode
+void setIsRelative(bool isRelative);
+bool isRelative() const;
+```
+
+### Lissajous Parameters
+
+For the Lissajous algorithm only:
+
+```cpp
+// Frequency control
+void setXFrequency(int freq);  // 0-32
+int xFrequency() const;
+void setYFrequency(int freq);  // 0-32
+int yFrequency() const;
+
+// Phase control
+void setXPhase(int phase);     // 0-359 degrees
+int xPhase() const;
+void setYPhase(int phase);     // 0-359 degrees
+int yPhase() const;
+
+// Check if frequency/phase are enabled
+bool isFrequencyEnabled();
+bool isPhaseEnabled() const;
+```
+
+## Fixture Management
+
+EFX can control multiple fixtures:
+
+```cpp
+// Add fixture
+bool addFixture(quint32 fxi, int head = 0);
+bool addFixture(EFXFixture *ef);
+
+// Remove fixture
+bool removeFixture(quint32 fxi, int head);
+bool removeFixture(EFXFixture *ef);
+void removeAllFixtures();
+
+// Reorder fixtures
+bool raiseFixture(EFXFixture *ef);
+bool lowerFixture(EFXFixture *ef);
+
+// Get fixtures
+const QList<EFXFixture*> fixtures() const;
+EFXFixture* fixture(quint32 id, int headIndex);
+```
+
+## Propagation Modes
+
+Control how the pattern spreads across multiple fixtures:
+
+```cpp
+enum PropagationMode {
+    Parallel,    // All fixtures move in unison
+    Serial,      // Pattern propagates fixture-by-fixture
+    Asymmetric   // All fixtures offset in the pattern
+};
+
+void setPropagationMode(PropagationMode mode);
+PropagationMode propagationMode() const;
+```
+
+### Propagation Behavior
+
+<Steps>
+  <Step title="Parallel Mode">
+    All fixtures move identically, synchronized perfectly
+  </Step>
+  <Step title="Serial Mode">
+    Each fixture starts after a delay, creating a wave effect
+  </Step>
+  <Step title="Asymmetric Mode">
+    Fixtures are offset in the pattern for spread-out effects
+  </Step>
+</Steps>
+
+## Pattern Preview
+
+Generate preview coordinates for visualization:
+
+```cpp
+// Preview the pattern
+void preview(QPolygonF &polygon) const;
+
+// Preview all fixtures
+void previewFixtures(QVector<QPolygonF> &polygons) const;
+
+// Calculate a single point
+void calculatePoint(Function::Direction direction, 
+                    int startOffset, 
+                    float iterator, 
+                    float *x, 
+                    float *y) const;
+```
+
+Preview generates 128 points representing the pattern path.
+
+## Attributes
+
+EFX supports real-time attribute adjustment:
+
+```cpp
+enum EFXAttr {
+    Intensity,      // Master intensity
+    Width,          // Pattern width
+    Height,         // Pattern height
+    Rotation,       // Pattern rotation
+    XOffset,        // X position
+    YOffset,        // Y position
+    StartOffset     // Start position
+};
+
+int adjustAttribute(qreal fraction, int attributeId);
+```
+
+<Note>
+All attributes can be adjusted in real-time while the EFX is running, allowing for dynamic pattern morphing.
+</Note>
+
+## Duration Control
+
+```cpp
+// Set loop duration
+void setDuration(uint ms);
+
+// Get duration for one complete loop
+uint loopDuration() const;
+```
+
+Duration controls how long one complete cycle of the pattern takes.
+
+## XML Structure
+
+```xml
+<Function Type="EFX" ID="5" Name="Circle Effect">
+  <Speed FadeIn="0" FadeOut="0" Duration="20000"/>
+  <Direction>Forward</Direction>
+  <RunOrder>Loop</RunOrder>
+  <PropagationMode>Serial</PropagationMode>
+  <Algorithm>Circle</Algorithm>
+  <Width>127</Width>
+  <Height>127</Height>
+  <Rotation>0</Rotation>
+  <StartOffset>0</StartOffset>
+  <IsRelative>0</IsRelative>
+  <Axis Name="X">
+    <Offset>127</Offset>
+    <Frequency>2</Frequency>
+    <Phase>90</Phase>
+  </Axis>
+  <Axis Name="Y">
+    <Offset>127</Offset>
+    <Frequency>3</Frequency>
+    <Phase>0</Phase>
+  </Axis>
+  <Fixture>
+    <ID>0</ID>
+    <Head>0</Head>
+  </Fixture>
+</Function>
+```
+
+## Mathematical Implementation
+
+EFX uses trigonometric functions to calculate positions:
+
+```cpp
+// Example: Circle algorithm
+void calculatePoint(float iterator, float *x, float *y) {
+    *x = cos(iterator + M_PI_2);
+    *y = cos(iterator);
+    
+    // Apply rotation and scaling
+    rotateAndScale(x, y);
+}
+```
+
+The `iterator` parameter represents the current position in the cycle (0 to 2π).
+
+## Blend Modes
+
+EFX supports blend mode control:
+
+```cpp
+void setBlendMode(Universe::BlendMode mode);
+```
+
+This affects how EFX output mixes with other functions.
+
+## Best Practices
+
+<Steps>
+  <Step title="Match Duration to Music">
+    For music-synced effects, set duration to match beat timing
+  </Step>
+  <Step title="Use Relative Mode for Presets">
+    Enable relative mode to preserve fixture positions from palettes
+  </Step>
+  <Step title="Adjust StartOffset for Variety">
+    Use different start offsets per fixture for visual interest
+  </Step>
+  <Step title="Test Pattern Preview">
+    Use the preview function to visualize before applying to fixtures
+  </Step>
+  <Step title="Combine with Intensity">
+    Use intensity attribute to fade effects in/out smoothly
+  </Step>
+</Steps>
+
+<Warning>
+Extreme width/height values (0 or 255) may cause fixtures to reach their physical limits. Test patterns at moderate scales first.
+</Warning>
+
+## Performance Considerations
+
+- EFX calculations are lightweight (trigonometric functions)
+- Pattern preview can be generated offline for UI display
+- Rotation uses cached sin/cos values for efficiency
+- Multiple fixtures in Serial mode add minimal overhead
+
+## Advanced: Lissajous Curves
+
+Lissajous patterns create complex wave interactions:
+
+```cpp
+// Create a 3:2 Lissajous curve
+efx->setAlgorithm(EFX::Lissajous);
+efx->setXFrequency(3);
+efx->setYFrequency(2);
+efx->setXPhase(90);  // 90° phase shift
+efx->setYPhase(0);
+```
+
+Different frequency ratios create different patterns:
+- 1:1 = Circle/ellipse
+- 2:1 = Figure eight
+- 3:2 = Complex curve
+- 0 (special) = Triangle wave
+
+## See Also
+
+- [RGB Matrix](/functions/rgb-matrix) - Pixel-based effects
+- [Chasers](/functions/chasers) - Sequential function playback
+- [Scenes](/functions/scenes) - Static position presets

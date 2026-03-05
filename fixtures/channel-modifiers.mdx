@@ -1,0 +1,591 @@
+---
+title: Channel Modifiers
+description: Modify fixture channel behavior with custom DMX value mapping for fine-tuning and correction
+---
+
+## Overview
+
+Channel Modifiers allow you to transform DMX values sent to specific fixture channels. This is useful for correcting non-linear dimming curves, inverting channel behavior, or creating custom response curves for individual fixtures.
+
+## Understanding Channel Modifiers
+
+A Channel Modifier maps input DMX values to output DMX values:
+
+```cpp
+// From channelmodifier.h:20-79
+class ChannelModifier final
+{
+public:
+    enum Type {
+        SystemTemplate = 0,  // Built-in templates
+        UserTemplate = 1     // User-created templates
+    };
+    
+    QString name() const;    // Modifier name
+    Type type() const;       // Template type
+    
+    // Map of input → output DMX values
+    QList<QPair<uchar, uchar>> modifierMap() const;
+    
+    // Get modified output for given input
+    uchar getValue(uchar dmxValue) const;
+};
+```
+
+### How It Works
+
+1. **Input Value**: QLC+ generates a DMX value (0-255)
+2. **Modifier Applied**: The modifier transforms the value
+3. **Output Value**: The modified value is sent to the fixture
+
+```
+Input DMX: 128 → [Modifier] → Output DMX: 180
+```
+
+## Use Cases
+
+### Dimmer Curve Correction
+
+Some LED fixtures have non-linear dimming:
+- At low values, dimming is too abrupt
+- At high values, changes are barely noticeable
+
+A modifier can create a custom curve to compensate.
+
+### Channel Inversion
+
+Invert a channel's response:
+- Input 0 → Output 255
+- Input 128 → Output 127
+- Input 255 → Output 0
+
+Useful when:
+- A fixture is physically mounted upside-down
+- Pan/tilt needs to be reversed
+- You want opposite behavior without reprogramming
+
+### Fine-Tuning Color Matching
+
+Adjust individual color channels to match fixtures from different manufacturers or batches.
+
+### Custom Response Curves
+
+Create exponential, logarithmic, or S-curve responses for specific effects.
+
+## Creating a Channel Modifier
+
+### Modifier Map Structure
+
+A modifier is defined by a list of control points:
+
+```cpp
+// From channelmodifier.cpp:53-88
+void ChannelModifier::setModifierMap(QList<QPair<uchar, uchar>> map)
+{
+    m_map = map;
+    m_values.fill(0, 256);
+    
+    QPair<uchar, uchar> lastDMXPair;
+    for (int i = 0; i < m_map.count(); i++)
+    {
+        QPair<uchar, uchar> dmxPair = m_map.at(i);
+        m_values[dmxPair.first] = dmxPair.second;
+        
+        if (i != 0)
+        {
+            // Calculate linear interpolation between points
+            float dmxInc = 0;
+            if (dmxPair.first - lastDMXPair.first > 0)
+                dmxInc = (float)(dmxPair.second - lastDMXPair.second) / 
+                         (float)(dmxPair.first - lastDMXPair.first);
+            
+            // Fill intermediate values
+            float floatVal = lastDMXPair.second;
+            for (int p = lastDMXPair.first; p < dmxPair.first; p++)
+            {
+                m_values[p] = floatVal;
+                floatVal += dmxInc;
+            }
+        }
+        lastDMXPair = dmxPair;
+    }
+}
+```
+
+<Note>
+Values between control points are automatically interpolated linearly. You only need to define key points in the curve.
+</Note>
+
+### Example: Simple Invert Modifier
+
+Two control points create a full inversion:
+
+```
+Control Points:
+  Input 0   → Output 255
+  Input 255 → Output 0
+
+Interpolated:
+  Input 0   → Output 255
+  Input 64  → Output 191
+  Input 128 → Output 127
+  Input 192 → Output 63
+  Input 255 → Output 0
+```
+
+### Example: Dimmer Curve
+
+Multiple points create a custom curve:
+
+```
+Control Points:
+  Input 0   → Output 0    (Off stays off)
+  Input 25  → Output 60   (Boost low values)
+  Input 128 → Output 140  (Slightly boost mid)
+  Input 255 → Output 255  (Full stays full)
+```
+
+This makes low-end dimming smoother while preserving full brightness.
+
+## Applying Modifiers to Fixtures
+
+### Assignment
+
+Modifiers are assigned per-channel, per-fixture:
+
+```cpp
+// From fixture.h:323-328
+void setChannelModifier(quint32 idx, ChannelModifier *mod);
+ChannelModifier *channelModifier(quint32 idx);
+```
+
+<Steps>
+  <Step title="Select Fixture">
+    Choose the fixture you want to modify in the Fixture Manager.
+  </Step>
+
+  <Step title="Choose Channel">
+    Select the specific channel to apply the modifier to (e.g., channel 0 = Dimmer).
+  </Step>
+
+  <Step title="Select or Create Modifier">
+    - Use a system template
+    - Load a user template
+    - Create a new custom modifier
+  </Step>
+
+  <Step title="Apply and Test">
+    Apply the modifier and test the fixture's response.
+  </Step>
+</Steps>
+
+### Storage
+
+Modifiers are stored with the fixture in the project:
+
+```cpp
+// From fixture.h:352-356
+QMap<quint32, ChannelModifier*> m_channelModifiers;
+```
+
+Each fixture can have different modifiers on different channels.
+
+## Modifier Templates
+
+### System Templates
+
+QLC+ includes built-in modifier templates for common use cases:
+
+```cpp
+enum Type {
+    SystemTemplate = 0,  // Pre-installed modifiers
+    UserTemplate = 1     // User-created
+};
+```
+
+System templates might include:
+- **Invert**: Full 0-255 inversion
+- **Square Law**: Quadratic dimming curve
+- **Logarithmic**: Log-based dimming
+- **Exponential**: Exponential response
+
+### User Templates
+
+Create and save your own templates for reuse:
+
+```cpp
+// From channelmodifier.h:67-72
+QFile::FileError saveXML(const QString& fileName) const;
+QFile::FileError loadXML(const QString& fileName, Type type);
+```
+
+## XML File Format
+
+Modifiers are saved as XML files:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ChannelModifier>
+<ChannelModifier>
+  <Name>Custom Dimmer Curve</Name>
+  <Handler Original="0" Modified="0"/>
+  <Handler Original="25" Modified="60"/>
+  <Handler Original="128" Modified="140"/>
+  <Handler Original="255" Modified="255"/>
+</ChannelModifier>
+```
+
+### XML Structure
+
+```cpp
+// From channelmodifier.h:32-38 and channelmodifier.cpp:100-137
+#define KXMLQLCChannelModifierDocument "ChannelModifier"
+#define KXMLQLCChannelModName          "Name"
+#define KXMLQLCChannelModHandler       "Handler"
+#define KXMLQLCChannelModOriginalDMX   "Original"
+#define KXMLQLCChannelModModifiedDMX   "Modified"
+```
+
+<Accordion title="Name Element">
+  The modifier's descriptive name:
+  ```xml
+  <Name>Custom Dimmer Curve</Name>
+  ```
+</Accordion>
+
+<Accordion title="Handler Elements">
+  Each handler defines one control point:
+  ```xml
+  <Handler Original="128" Modified="140"/>
+  ```
+  - **Original**: Input DMX value (0-255)
+  - **Modified**: Output DMX value (0-255)
+</Accordion>
+
+## Creating Custom Modifiers
+
+### Linear Modification
+
+<Steps>
+  <Step title="Define Start and End">
+    ```xml
+    <Handler Original="0" Modified="0"/>
+    <Handler Original="255" Modified="255"/>
+    ```
+    This creates no modification (identity).
+  </Step>
+
+  <Step title="Add Intermediate Points">
+    ```xml
+    <Handler Original="0" Modified="0"/>
+    <Handler Original="128" Modified="160"/>
+    <Handler Original="255" Modified="255"/>
+    ```
+    Boosts mid-range values.
+  </Step>
+</Steps>
+
+### Inversion Modifier
+
+```xml
+<ChannelModifier>
+  <Name>Invert</Name>
+  <Handler Original="0" Modified="255"/>
+  <Handler Original="255" Modified="0"/>
+</ChannelModifier>
+```
+
+### S-Curve Modifier
+
+Smooth transition with slow start/end, fast middle:
+
+```xml
+<ChannelModifier>
+  <Name>S-Curve</Name>
+  <Handler Original="0" Modified="0"/>
+  <Handler Original="64" Modified="32"/>
+  <Handler Original="128" Modified="128"/>
+  <Handler Original="192" Modified="223"/>
+  <Handler Original="255" Modified="255"/>
+</ChannelModifier>
+```
+
+### Compression Modifier
+
+Limit output range (e.g., never go below 20% or above 90%):
+
+```xml
+<ChannelModifier>
+  <Name>20-90% Range</Name>
+  <Handler Original="0" Modified="51"/>    <!-- 20% -->
+  <Handler Original="255" Modified="229"/>  <!-- 90% -->
+</ChannelModifier>
+```
+
+## Loading and Saving Modifiers
+
+### Save XML
+
+```cpp
+// From channelmodifier.cpp:100-137
+QFile::FileError ChannelModifier::saveXML(const QString &fileName) const
+{
+    if (fileName.isEmpty())
+        return QFile::OpenError;
+    
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly))
+        return file.error();
+    
+    QXmlStreamWriter doc(&file);
+    doc.setAutoFormatting(true);
+    doc.writeTextElement(KXMLQLCChannelModName, m_name);
+    
+    for (int i = 0; i < m_map.count(); i++)
+    {
+        QPair<uchar, uchar> mapElement = m_map.at(i);
+        doc.writeStartElement(KXMLQLCChannelModHandler);
+        doc.writeAttribute(KXMLQLCChannelModOriginalDMX, 
+                          QString::number(mapElement.first));
+        doc.writeAttribute(KXMLQLCChannelModModifiedDMX, 
+                          QString::number(mapElement.second));
+        doc.writeEndElement();
+    }
+    
+    file.close();
+    return QFile::NoError;
+}
+```
+
+### Load XML
+
+```cpp
+// From channelmodifier.cpp:139-212
+QFile::FileError ChannelModifier::loadXML(const QString &fileName, Type type)
+{
+    if (fileName.isEmpty())
+        return QFile::OpenError;
+    
+    QXmlStreamReader *doc = QLCFile::getXMLReader(fileName);
+    if (doc == NULL || doc->hasError())
+        return QFile::ReadError;
+    
+    QList<QPair<uchar, uchar>> modMap;
+    
+    while (!doc->atEnd())
+    {
+        if (doc->name() == KXMLQLCChannelModName)
+        {
+            setName(doc->readElementText());
+        }
+        else if (doc->name() == KXMLQLCChannelModHandler)
+        {
+            QPair<uchar, uchar> dmxPair(0, 0);
+            QXmlStreamAttributes attrs = doc->attributes();
+            if (attrs.hasAttribute(KXMLQLCChannelModOriginalDMX))
+                dmxPair.first = attrs.value(KXMLQLCChannelModOriginalDMX)
+                                     .toString().toUInt();
+            if (attrs.hasAttribute(KXMLQLCChannelModModifiedDMX))
+                dmxPair.second = attrs.value(KXMLQLCChannelModModifiedDMX)
+                                      .toString().toUInt();
+            modMap.append(dmxPair);
+        }
+    }
+    
+    if (modMap.count() > 0)
+    {
+        setType(type);
+        setModifierMap(modMap);
+    }
+    
+    return QFile::NoError;
+}
+```
+
+## Value Retrieval
+
+At runtime, modifiers transform values:
+
+```cpp
+// From channelmodifier.cpp:95-98
+uchar ChannelModifier::getValue(uchar dmxValue) const
+{
+    return m_values.at(dmxValue);
+}
+```
+
+The pre-calculated lookup table (`m_values`) provides fast O(1) value transformation.
+
+## Practical Examples
+
+### Example 1: Fix LED Dimming
+
+**Problem**: LED fixture jumps from 0 to bright at low values.
+
+**Solution**: Create a modifier that spreads low values:
+
+```xml
+<ChannelModifier>
+  <Name>Smooth LED Dimmer</Name>
+  <Handler Original="0" Modified="0"/>
+  <Handler Original="10" Modified="30"/>
+  <Handler Original="50" Modified="80"/>
+  <Handler Original="128" Modified="150"/>
+  <Handler Original="255" Modified="255"/>
+</ChannelModifier>
+```
+
+### Example 2: Match Fixture Brightness
+
+**Problem**: Two fixtures of different models; one is brighter than the other at the same DMX value.
+
+**Solution**: Reduce maximum output of the brighter fixture:
+
+```xml
+<ChannelModifier>
+  <Name>Reduce Brightness 20%</Name>
+  <Handler Original="0" Modified="0"/>
+  <Handler Original="255" Modified="204"/>  <!-- 80% of 255 -->
+</ChannelModifier>
+```
+
+### Example 3: Reverse Pan Direction
+
+**Problem**: Moving head mounted backwards needs inverted pan.
+
+**Solution**: Simple inversion:
+
+```xml
+<ChannelModifier>
+  <Name>Invert Pan</Name>
+  <Handler Original="0" Modified="255"/>
+  <Handler Original="255" Modified="0"/>
+</ChannelModifier>
+```
+
+Apply to the Pan channel only; Tilt remains normal.
+
+### Example 4: Limit Range for Safety
+
+**Problem**: Don't want a motor-driven effect to reach extreme positions.
+
+**Solution**: Compress to safe range (e.g., 25%-75%):
+
+```xml
+<ChannelModifier>
+  <Name>Safe Range Limit</Name>
+  <Handler Original="0" Modified="64"/>    <!-- 25% -->
+  <Handler Original="255" Modified="191"/>  <!-- 75% -->
+</ChannelModifier>
+```
+
+## Modifier Storage in Projects
+
+Channel modifiers are saved per-fixture in the project XML:
+
+```xml
+<Fixture ID="1" Name="LED Par 1" Universe="0" Address="0" Channels="4">
+  <Modifier Channel="0" Name="Smooth LED Dimmer"/>
+</Fixture>
+```
+
+The modifier definition itself is stored in:
+- System templates: QLC+ installation directory
+- User templates: User configuration directory
+
+## Advanced Techniques
+
+### Multi-Point Curves
+
+Use many control points for precise curves:
+
+```xml
+<ChannelModifier>
+  <Name>Precise Curve</Name>
+  <Handler Original="0" Modified="0"/>
+  <Handler Original="10" Modified="25"/>
+  <Handler Original="20" Modified="45"/>
+  <Handler Original="40" Modified="75"/>
+  <Handler Original="80" Modified="120"/>
+  <Handler Original="128" Modified="160"/>
+  <Handler Original="192" Modified="210"/>
+  <Handler Original="255" Modified="255"/>
+</ChannelModifier>
+```
+
+### Step Functions
+
+Create discrete steps (though interpolation makes true steps difficult):
+
+```xml
+<ChannelModifier>
+  <Name>Quarter Steps</Name>
+  <Handler Original="0" Modified="0"/>
+  <Handler Original="63" Modified="0"/>
+  <Handler Original="64" Modified="85"/>
+  <Handler Original="127" Modified="85"/>
+  <Handler Original="128" Modified="170"/>
+  <Handler Original="191" Modified="170"/>
+  <Handler Original="192" Modified="255"/>
+  <Handler Original="255" Modified="255"/>
+</ChannelModifier>
+```
+
+## Best Practices
+
+<Accordion title="Testing Modifiers">
+  - Test with actual fixtures before using in production
+  - Use QLC+'s DMX monitor to verify output values
+  - Document why each modifier was created
+  - Keep backup copies of working modifiers
+</Accordion>
+
+<Accordion title="Naming">
+  - Use descriptive names: "Invert Pan", "Smooth Dimmer"
+  - Include fixture model if fixture-specific
+  - Reference the channel: "Red Channel Boost"
+  - Date complex modifiers: "LED Bar Fix 2024-03"
+</Accordion>
+
+<Accordion title="Control Points">
+  - Always define handlers at 0 and 255
+  - Use more points for complex curves
+  - Space points where curve changes most
+  - Test edge cases (0, 1, 254, 255)
+</Accordion>
+
+<Accordion title="Reusability">
+  - Save useful modifiers as templates
+  - Create a library of common corrections
+  - Share modifiers with team members
+  - Document parameters in the modifier name
+</Accordion>
+
+## Troubleshooting
+
+### Modifier Not Applied
+
+- Verify modifier is assigned to correct channel number
+- Check that fixture has the channel you're modifying
+- Reload the project or refresh fixtures
+
+### Unexpected Output Values
+
+- Review all control points in the modifier
+- Check for typos in Original/Modified values
+- Remember: values are interpolated between points
+- Use DMX monitor to see actual output
+
+### Performance Issues
+
+Modifiers use pre-calculated lookup tables, so performance impact is minimal. If you experience issues:
+
+- Check total number of fixtures with modifiers
+- Verify QLC+ version supports modifiers properly
+- Test with fewer fixtures to isolate the problem
+
+## Next Steps
+
+- Learn about [Adding Fixtures](/fixtures/adding-fixtures) to apply modifiers to
+- Explore [Fixture Groups](/fixtures/fixture-groups) for bulk control
+- Create custom fixtures with the [Fixture Editor](/fixtures/fixture-editor)

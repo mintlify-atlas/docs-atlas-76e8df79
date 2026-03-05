@@ -1,0 +1,429 @@
+---
+title: E1.31 (sACN) Plugin  
+description: ANSI E1.31 Streaming ACN protocol support
+---
+
+## Overview
+
+The E1.31 plugin implements the ANSI E1.31 (Streaming ACN) protocol for transmitting and receiving DMX512 data over Ethernet networks. E1.31 is a standardized protocol developed by ESTA (Entertainment Services and Technology Association) as an open alternative to Art-Net.
+
+<Note>
+The plugin name as reported by QLC+ is **"E1.31"**
+</Note>
+
+## Capabilities
+
+The E1.31 plugin supports:
+
+- **Output** - Send DMX data over network
+- **Input** - Receive DMX data from network sources
+- **Infinite** - Unlimited universes
+
+## Protocol Specifications
+
+- **Protocol:** ANSI E1.31 (Streaming ACN)
+- **Port:** 5568 (UDP, default)
+- **Universe Range:** 1-63999
+- **Channels per Universe:** 512
+- **Multicast:** Supported (239.255.x.x)
+- **Unicast:** Supported
+
+```cpp
+#define E131_DEFAULT_PORT 5568
+```
+
+## Network Interface Structure
+
+The plugin creates a controller for each network interface:
+
+```cpp
+typedef struct _eio
+{
+    QNetworkInterface iface;       // Network interface
+    QNetworkAddressEntry address;  // IP address configuration  
+    E131Controller* controller;    // Controller instance
+} E131IO;
+```
+
+## Configuration
+
+### Network Interface Detection
+
+The plugin automatically detects all available network interfaces at startup:
+
+```cpp
+#define SETTINGS_IFACE_WAIT_TIME "E131Plugin/ifacewait"
+```
+
+### Custom Parameters
+
+E1.31 supports extensive configuration through custom parameters:
+
+```cpp
+#define E131_MULTICAST "multicast"         // Enable multicast mode
+#define E131_MCASTIP "mcastIP"            // Multicast IP address
+#define E131_MCASTFULLIP "mcastFullIP"    // Full multicast IP (no calculation)
+#define E131_UCASTIP "ucastIP"            // Unicast IP address
+#define E131_UCASTPORT "ucastPort"        // Unicast port
+#define E131_UNIVERSE "universe"          // E1.31 universe number
+#define E131_TRANSMITMODE "transmitMode"  // Full or Partial
+#define E131_PRIORITY "priority"          // Packet priority (0-200)
+```
+
+### Setting Parameters
+
+```cpp
+void setParameter(quint32 universe, quint32 line,
+                  Capability type, QString name, QVariant value);
+```
+
+## Multicast vs Unicast
+
+E1.31 supports both multicast and unicast transmission:
+
+<Tabs>
+  <Tab title="Multicast">
+    ### Multicast Mode
+    
+    Automatically calculates multicast address from universe number:
+    
+    **Formula:** `239.255.{universe >> 8}.{universe & 0xFF}`
+    
+    **Examples:**
+    - Universe 1 → 239.255.0.1
+    - Universe 256 → 239.255.1.0
+    - Universe 512 → 239.255.2.0
+    
+    **Advantages:**
+    - Efficient for multiple receivers
+    - Devices join specific multicast groups
+    - Reduced network traffic
+    
+    **Configuration:**
+    ```cpp
+    setParameter(universe, line, Output, "multicast", true);
+    setParameter(universe, line, Output, "universe", 1);
+    ```
+  </Tab>
+  <Tab title="Unicast">
+    ### Unicast Mode
+    
+    Send directly to a specific IP address:
+    
+    **Configuration:**
+    ```cpp
+    setParameter(universe, line, Output, "multicast", false);
+    setParameter(universe, line, Output, "ucastIP", "192.168.1.100");
+    setParameter(universe, line, Output, "ucastPort", 5568);
+    setParameter(universe, line, Output, "universe", 1);
+    ```
+    
+    **Advantages:**
+    - Point-to-point communication
+    - Easier firewall configuration
+    - Works across routed networks
+    
+    **Use cases:**
+    - Single receiver
+    - Crossing network boundaries
+    - When multicast is blocked
+  </Tab>
+</Tabs>
+
+## Universe Configuration
+
+E1.31 universe structure:
+
+```cpp
+typedef struct _uinfo
+{
+    bool inputMulticast;              // Input uses multicast
+    QHostAddress inputMcastAddress;   // Input multicast address
+    quint16 inputUcastPort;          // Input unicast port
+    quint16 inputUniverse;           // E1.31 universe number for input
+    QSharedPointer<QUdpSocket> inputSocket; // Input socket
+    
+    bool outputMulticast;            // Output uses multicast  
+    QHostAddress outputMcastAddress; // Output multicast address
+    QHostAddress outputUcastAddress; // Output unicast address
+    quint16 outputUcastPort;        // Output unicast port
+    quint16 outputUniverse;         // E1.31 universe number for output
+    int outputTransmissionMode;     // Full or Partial
+    int outputPriority;             // Priority (0-200, default 100)
+    
+    int type;                       // Input, Output, or both
+} UniverseInfo;
+```
+
+## Output Configuration
+
+### Opening an Output
+
+```cpp
+bool openOutput(quint32 output, quint32 universe);
+```
+
+### Transmission Modes
+
+```cpp
+enum TransmissionMode { 
+    Full,     // Always send full 512-channel universe
+    Partial   // Send only up to highest non-zero channel
+};
+```
+
+<CardGroup cols={2}>
+  <Card title="Full Mode" icon="signal">
+    Sends all 512 channels every time.
+    
+    **Best for:** Maximum compatibility, devices requiring full universes
+  </Card>
+  <Card title="Partial Mode" icon="signal">
+    Sends only channels up to the highest with data.
+    
+    **Best for:** Bandwidth optimization, fewer channels in use
+  </Card>
+</CardGroup>
+
+### Sending Data
+
+```cpp
+void writeUniverse(quint32 universe, quint32 output,
+                   const QByteArray& data, bool dataChanged);
+```
+
+The plugin:
+1. Retrieves the E1.31 controller for the output line
+2. Calls `sendDmx()` with universe and data
+3. Controller packetizes according to E1.31 specification
+4. Transmits via UDP (multicast or unicast)
+
+### Priority
+
+E1.31 supports priority levels (0-200, default 100):
+
+```cpp
+setParameter(universe, line, Output, "priority", 120);
+```
+
+Higher priority sources take precedence when multiple sources send to the same universe.
+
+<Note>
+Priority is useful when you have backup systems or multiple controllers that might send to the same universe.
+</Note>
+
+## Input Configuration
+
+### Opening an Input
+
+```cpp
+bool openInput(quint32 input, quint32 universe);
+```
+
+### Multicast Input
+
+For multicast input:
+1. Plugin joins the multicast group for the specified universe
+2. Listens on the multicast address
+3. Processes E1.31 packets matching the universe number
+
+```cpp
+// Example: Listen for universe 1 on 239.255.0.1
+setParameter(universe, line, Input, "multicast", true);
+setParameter(universe, line, Input, "universe", 1);
+```
+
+### Unicast Input
+
+For unicast input:
+1. Plugin listens on specified port (default 5568)
+2. Accepts packets from any sender
+3. Filters by universe number
+
+```cpp
+setParameter(universe, line, Input, "multicast", false);
+setParameter(universe, line, Input, "ucastPort", 5568);
+setParameter(universe, line, Input, "universe", 1);
+```
+
+### Receiving Data
+
+When E1.31 packets arrive:
+1. UDP socket receives the datagram
+2. Controller validates E1.31 packet structure
+3. Extracts universe number and DMX data
+4. Emits `valueChanged()` for changed channels
+
+```cpp
+signal void valueChanged(quint32 universe, quint32 input,
+                        quint32 channel, uchar value);
+```
+
+## Network Configuration
+
+### Multicast Configuration
+
+<Steps>
+  <Step title="Enable multicast on your network">
+    Ensure switches and routers support IGMP (Internet Group Management Protocol)
+  </Step>
+  <Step title="Configure IGMP snooping">
+    Prevents multicast flooding by intelligently forwarding to interested parties only
+  </Step>
+  <Step title="Set appropriate TTL">
+    Multicast TTL (Time To Live) determines how far packets can travel across routers
+  </Step>
+  <Step title="Join multicast groups">
+    Receiving devices automatically join the appropriate 239.255.x.x address
+  </Step>
+</Steps>
+
+### Firewall Configuration
+
+**Allow E1.31 traffic:**
+
+```bash
+# Linux (iptables)
+sudo iptables -A INPUT -p udp --dport 5568 -j ACCEPT
+sudo iptables -A OUTPUT -p udp --sport 5568 -j ACCEPT
+
+# Linux (firewalld)  
+sudo firewall-cmd --permanent --add-port=5568/udp
+sudo firewall-cmd --reload
+```
+
+**Allow multicast:**
+```bash
+# Linux - allow multicast group joins
+sudo iptables -A INPUT -d 239.255.0.0/16 -j ACCEPT
+sudo iptables -A OUTPUT -d 239.255.0.0/16 -j ACCEPT
+```
+
+### Network Interface Configuration
+
+**Recommended setup:**
+```
+Interface: eth1
+IP Address: 192.168.1.10
+Subnet Mask: 255.255.255.0
+Gateway: (none for dedicated E1.31 network)
+```
+
+<Warning>
+For multicast to work properly, your network switch must support IGMP snooping. Without it, multicast packets may be flooded to all ports or blocked entirely.
+</Warning>
+
+## E1.31 vs Art-Net
+
+| Feature | E1.31 | Art-Net |
+|---------|-------|----------|
+| **Standard** | ANSI/ESTA | Proprietary (open) |
+| **Port** | 5568 | 6454 |
+| **Multicast** | Built-in (239.255.x.x) | Optional |
+| **Universe Range** | 1-63999 | 0-32767 |
+| **Priority** | Yes (0-200) | No |
+| **Sync** | Built-in sync packets | ArtSync packets |
+| **Discovery** | No | ArtPoll/ArtPollReply |
+
+<Note>
+E1.31 is preferred for new installations due to being an open ANSI standard. Art-Net has wider legacy device support.
+</Note>
+
+## Performance Optimization
+
+### Bandwidth Optimization
+
+- Use Partial transmission mode when possible
+- Use multicast instead of multiple unicast streams
+- Reduce refresh rate for static scenes
+- Patch only required universes
+
+### Multicast Best Practices
+
+1. **Use IGMP v3** for better multicast management
+2. **Limit multicast scope** with appropriate TTL values
+3. **Monitor multicast traffic** to detect flooding
+4. **Configure switch priorities** for E1.31 traffic
+
+### Multiple Network Interfaces
+
+Distribute universes across multiple NICs:
+- NIC 1: Universes 1-16 → 239.255.0.1 - 239.255.0.16
+- NIC 2: Universes 17-32 → 239.255.0.17 - 239.255.0.32
+
+This load balances across physical interfaces.
+
+## Troubleshooting
+
+### No Output
+
+<AccordionGroup>
+  <Accordion title="Check multicast settings">
+    Verify multicast is enabled on network switches and receiving devices are joining the correct multicast group
+  </Accordion>
+  <Accordion title="Verify universe numbers">
+    E1.31 universes must match between sender and receiver (1-63999)
+  </Accordion>
+  <Accordion title="Test with unicast first">
+    Unicast is simpler to troubleshoot than multicast - verify basic connectivity first
+  </Accordion>
+  <Accordion title="Check firewall">
+    Ensure UDP port 5568 is open and multicast addresses (239.255.x.x) are allowed
+  </Accordion>
+</AccordionGroup>
+
+### No Input
+
+1. Verify the sender is using the correct universe number
+2. Check that multicast group is joined (for multicast input)
+3. Use Wireshark to capture and verify E1.31 packets
+4. Confirm port numbers match (default 5568)
+
+### Multicast Not Working
+
+<Steps>
+  <Step title="Verify IGMP support">
+    Check if your switch supports IGMP snooping
+  </Step>
+  <Step title="Enable IGMP snooping">
+    Enable on all switches in the path
+  </Step>
+  <Step title="Check multicast routing">
+    Ensure multicast is routed correctly between VLANs (if applicable)
+  </Step>
+  <Step title="Test with broadcast">
+    Temporarily use unicast/broadcast to isolate the issue
+  </Step>
+</Steps>
+
+### Packet Analysis with Wireshark
+
+Filter for E1.31 traffic:
+```
+udp.port == 5568
+```
+
+Filter for specific multicast address:
+```
+ip.dst == 239.255.0.1 && udp.port == 5568
+```
+
+## Protocol Details
+
+For full E1.31 protocol specifications:
+- [ANSI E1.31 Standard (ESTA)](https://tsp.esta.org/tsp/documents/published_docs.php)
+- Search for "E1.31" in the published documents list
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Art-Net" icon="network-wired" href="/plugins/artnet">
+    Alternative Ethernet DMX protocol
+  </Card>
+  <Card title="OSC" icon="wave-square" href="/plugins/osc">
+    Open Sound Control protocol
+  </Card>
+  <Card title="Plugin Overview" icon="plug" href="/plugins/overview">
+    Learn about the plugin architecture
+  </Card>
+</CardGroup>

@@ -1,0 +1,397 @@
+---
+title: "RGB Matrix"
+description: "Pixel-based effects for LED fixtures arranged in grids using algorithmic patterns"
+---
+
+## Overview
+
+RGB Matrix is a specialized function for controlling LED fixtures arranged in a grid or matrix layout. It uses algorithms and scripts to generate pixel-based effects like text scrolling, animations, and geometric patterns across the fixture group.
+
+<Note>
+RGB Matrix requires fixtures to be organized in a Fixture Group that defines their physical layout (rows/columns).
+</Note>
+
+## When to Use RGB Matrix
+
+<CardGroup cols={2}>
+  <Card title="LED Walls" icon="grid">
+    Control LED panels arranged in matrix configurations
+  </Card>
+  <Card title="Pixel Mapping" icon="image">
+    Display images and videos on LED fixtures
+  </Card>
+  <Card title="Text Display" icon="font">
+    Scroll text messages across LED arrays
+  </Card>
+  <Card title="Geometric Patterns" icon="shapes">
+    Generate animated patterns like waves, spirals, and gradients
+  </Card>
+</CardGroup>
+
+## Key Components
+
+### Fixture Group
+
+<ParamField path="fixtureGroupID" type="quint32">
+  ID of the Fixture Group defining the matrix layout. Required for RGB Matrix operation.
+</ParamField>
+
+The Fixture Group defines:
+- Grid dimensions (width × height)
+- Fixture positions in the grid
+- Head mapping for multi-head fixtures
+
+### Algorithm
+
+RGB Matrix uses `RGBAlgorithm` objects to generate patterns:
+
+```cpp
+class RGBAlgorithm {
+public:
+    enum Type {
+        Script,   // JavaScript-based algorithms
+        Image,    // Static or animated images
+        Audio     // Audio spectrum visualization
+    };
+};
+```
+
+## Control Modes
+
+RGB Matrix supports different output channel types:
+
+```cpp
+enum ControlMode {
+    ControlModeRgb,      // RGB color channels
+    ControlModeWhite,    // White channel only
+    ControlModeAmber,    // Amber channel only
+    ControlModeUV,       // UV channel only
+    ControlModeDimmer,   // Dimmer channel
+    ControlModeShutter   // Shutter channel
+};
+```
+
+### Mode Descriptions
+
+<Steps>
+  <Step title="RGB Mode">
+    Outputs to red, green, and blue channels (or CMY channels)
+  </Step>
+  <Step title="White/Amber/UV Mode">
+    Outputs grayscale values to specific color channels
+  </Step>
+  <Step title="Dimmer Mode">
+    Controls intensity channels, treating the pattern as brightness
+  </Step>
+  <Step title="Shutter Mode">
+    Controls shutter channels with grayscale values
+  </Step>
+</Steps>
+
+## Class Methods
+
+The RGBMatrix class (rgbmatrix.h:95) provides:
+
+### Basic Setup
+
+```cpp
+// Set fixture group
+void setFixtureGroup(quint32 id);
+quint32 fixtureGroup() const;
+
+// Set algorithm
+void setAlgorithm(RGBAlgorithm* algo);
+RGBAlgorithm* algorithm() const;
+
+// Control mode
+void setControlMode(ControlMode mode);
+ControlMode controlMode() const;
+```
+
+### Color Management
+
+```cpp
+// Set color at index (up to 5 colors)
+void setColor(int i, QColor c);
+QColor getColor(int i) const;
+QVector<QColor> getColors() const;
+
+// Update color transitions
+void updateColorDelta();
+```
+
+<Note>
+Most algorithms support 1-2 colors. Some advanced scripts can use up to 5 colors for complex gradients.
+</Note>
+
+### Algorithm Properties
+
+Many algorithms expose custom properties:
+
+```cpp
+// Set algorithm property
+void setProperty(QString propName, QString value);
+
+// Get property value
+QString property(QString propName);
+```
+
+Common properties:
+- `orientation` - Pattern direction
+- `offset` - Pattern start position
+- `text` - Text to display (text scripts)
+- `image` - Image file path
+
+### Duration Control
+
+```cpp
+// Set step duration (time per frame)
+void setDuration(uint ms);
+
+// Set total duration (auto-calculates step duration)
+void setTotalDuration(quint32 msec);
+quint32 totalDuration();
+
+// Get algorithm step count
+int stepsCount() const;
+```
+
+### Preview
+
+Generate preview of the effect:
+
+```cpp
+void previewMap(int step, RGBMatrixStep *handler);
+```
+
+## The RGBMap Structure
+
+Algorithms generate an `RGBMap` - a 2D array of RGB values:
+
+```cpp
+typedef QVector<QVector<uint>> RGBMap;
+```
+
+Structure:
+```
+RGBMap[y][x] = RGB color (uint)
+  where:
+    y = row (0 to height-1)
+    x = column (0 to width-1)
+    color = 0xRRGGBB format
+```
+
+## Step Handler
+
+The `RGBMatrixStep` class manages animation:
+
+```cpp
+class RGBMatrixStep {
+public:
+    // Current step management
+    void setCurrentStepIndex(int index);
+    int currentStepIndex() const;
+    
+    // Color transitions
+    void calculateColorDelta(QColor startColor, 
+                             QColor endColor, 
+                             RGBAlgorithm *algorithm);
+    
+    void updateStepColor(int step, 
+                        QColor startColor, 
+                        int stepsCount);
+    
+    // Step progression
+    bool checkNextStep(Function::RunOrder order, 
+                      QColor startColor, 
+                      QColor endColor, 
+                      int stepsNumber);
+    
+public:
+    RGBMap m_map;  // Current frame data
+};
+```
+
+## Tempo Synchronization
+
+RGB Matrix supports beat-synced animation:
+
+```cpp
+// Set tempo type (Time or Beats)
+setTempoType(Function::Beats);
+
+// Duration interpreted as beat count
+setDuration(4);  // 4 beats per cycle
+```
+
+Beat timing:
+- Step advances on each beat
+- Step duration calculated from BPM
+- Supports beat-to-beat synchronization
+
+## Dimmer Control (Legacy)
+
+```cpp
+// Enable/disable dimmer control
+void setDimmerControl(bool dimmerControl);
+bool dimmerControl() const;
+```
+
+<Warning>
+Dimmer control is legacy. Use `ControlModeDimmer` instead for consistent behavior.
+</Warning>
+
+## Color Conversion
+
+RGB Matrix includes grayscale conversion:
+
+```cpp
+// Convert RGB to grayscale using BT.601 weights
+static uchar rgbToGrey(uint col);
+```
+
+Formula: `gray = 0.299*R + 0.587*G + 0.114*B`
+
+## XML Structure
+
+```xml
+<Function Type="RGBMatrix" ID="10" Name="Text Scroller">
+  <Speed FadeIn="0" FadeOut="0" Duration="50"/>
+  <Direction>Forward</Direction>
+  <RunOrder>Loop</RunOrder>
+  <Algorithm Type="Script">Text</Algorithm>
+  <Color Index="0">4278190335</Color>  <!-- RGB as uint -->
+  <Color Index="1">4278255360</Color>
+  <ControlMode>RGB</ControlMode>
+  <FixtureGroup>0</FixtureGroup>
+  <Property Name="text" Value="Hello World"/>
+  <Property Name="font" Value="Arial"/>
+  <Property Name="orientation" Value="Horizontal"/>
+</Function>
+```
+
+## Built-in Algorithms
+
+Common RGB scripts include:
+
+### Text Effects
+- **Text**: Scrolling text display
+- **Text (Centered)**: Centered text display
+
+### Geometric Patterns
+- **Stripes**: Horizontal or vertical stripes
+- **Gradient**: Color gradient fill
+- **Plasma**: Plasma effect
+- **Radial**: Radial gradient
+
+### Animations
+- **Balls**: Bouncing balls
+- **Waves**: Wave patterns
+- **Spiral**: Rotating spiral
+- **Fireworks**: Firework effect
+
+### Images
+- **Image**: Display static image
+- **Animated**: Play animated GIF
+
+## Best Practices
+
+<Steps>
+  <Step title="Proper Grid Setup">
+    Ensure fixture group accurately represents physical layout
+  </Step>
+  <Step title="Appropriate Step Duration">
+    Balance between smoothness (short duration) and performance (longer duration)
+  </Step>
+  <Step title="Test Color Modes">
+    Verify control mode matches your fixture channels
+  </Step>
+  <Step title="Use Fade In for Smooth Start">
+    Set fade in time to avoid jarring effect start
+  </Step>
+  <Step title="Optimize Algorithm Properties">
+    Adjust algorithm settings for best visual result
+  </Step>
+</Steps>
+
+## Channel Mapping
+
+RGB Matrix intelligently maps to fixture channels:
+
+```cpp
+// RGB fixtures
+if (hasRGB) {
+    red_channel = rgbToRed(color);
+    green_channel = rgbToGreen(color);
+    blue_channel = rgbToBlue(color);
+}
+
+// CMY fixtures (automatic conversion)
+if (hasCMY) {
+    cyan_channel = 255 - red;
+    magenta_channel = 255 - green;
+    yellow_channel = 255 - blue;
+}
+
+// Dimmer channels
+if (dimmerControl) {
+    master_dimmer = rgbToGrey(color);
+    head_dimmer = (color > 0) ? 255 : 0;
+}
+```
+
+## Performance Considerations
+
+- Large matrices (>100 pixels) require more CPU
+- Complex algorithms (Plasma, Fireworks) are CPU-intensive
+- Image algorithms need file I/O
+- Fade in/out adds fader overhead per channel
+
+<Warning>
+Very high frame rates (duration < 20ms) may cause timing issues on slower systems. Test performance before using in production.
+</Warning>
+
+## Attributes
+
+RGB Matrix supports intensity adjustment:
+
+```cpp
+int adjustAttribute(qreal fraction, int attributeId);
+```
+
+Intensity affects:
+- RGB channel output levels
+- Dimmer channel values
+- Overall brightness
+
+## Blend Modes
+
+RGB Matrix supports blend mode control:
+
+```cpp
+void setBlendMode(Universe::BlendMode mode);
+```
+
+Useful for:
+- Layering multiple matrices
+- Additive color mixing
+- Masking effects
+
+## Algorithm Mutex
+
+Thread-safe algorithm access:
+
+```cpp
+QRecursiveMutex& algorithmMutex();
+```
+
+Use when:
+- Changing algorithms during runtime
+- Accessing algorithm from multiple threads
+- Modifying algorithm properties
+
+## See Also
+
+- [EFX](/functions/efx) - Position-based effects
+- [Scenes](/functions/scenes) - Static fixture states
+- [Shows](/functions/shows) - Timeline-based shows with RGB matrices

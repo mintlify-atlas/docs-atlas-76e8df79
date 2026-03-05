@@ -1,0 +1,705 @@
+---
+title: Plugin Interface
+description: Complete API reference for the QLCIOPlugin interface
+---
+
+The `QLCIOPlugin` interface (plugins/interfaces/qlcioplugin.h:90) defines how I/O plugins communicate with the QLC+ engine.
+
+## Interface Overview
+
+All I/O plugins must implement the `QLCIOPlugin` interface to provide input/output capabilities.
+
+```cpp
+class QLCIOPlugin : public QObject
+{
+    Q_OBJECT
+
+public:
+    virtual ~QLCIOPlugin();
+    
+    // Initialization
+    virtual void init() = 0;
+    virtual QString name() const = 0;
+    virtual int capabilities() const = 0;
+    virtual QString pluginInfo() const = 0;
+    
+    // I/O lines discovery
+    virtual QStringList outputs() const = 0;
+    virtual QString outputInfo(quint32 output) = 0;
+    virtual QStringList inputs() const = 0;
+    virtual QString inputInfo(quint32 input) = 0;
+    
+    // Open/close operations
+    virtual bool openOutput(quint32 output, quint32 universe) = 0;
+    virtual void closeOutput(quint32 output, quint32 universe) = 0;
+    virtual bool openInput(quint32 input, quint32 universe) = 0;
+    virtual void closeInput(quint32 input, quint32 universe) = 0;
+    
+    // Data transfer
+    virtual void writeUniverse(quint32 universe, quint32 output,
+                               const QByteArray& data, bool dataChanged) = 0;
+    
+    // Configuration
+    virtual void configure();
+    virtual bool canConfigure();
+    virtual QString setupWidgetClassName() const;
+    
+    // Parameters
+    virtual QVariant getParameter(quint32 universe, quint32 line,
+                                 Capability type, QString name);
+    virtual bool setParameter(quint32 universe, quint32 line,
+                             Capability type, QString name, QVariant value);
+    
+signals:
+    void valueChanged(quint32 universe, quint32 input,
+                     quint32 channel, uchar value);
+    void configurationChanged();
+};
+```
+
+## Plugin Capabilities
+
+Plugins declare their features using capability flags.
+
+```cpp
+enum Capability {
+    Output      = 1 << 0,  // 0x01 - DMX output
+    Input       = 1 << 1,  // 0x02 - DMX input  
+    Feedback    = 1 << 2,  // 0x04 - Input feedback
+    Infinite    = 1 << 3,  // 0x08 - Unlimited universes
+    RDM         = 1 << 4,  // 0x10 - RDM support
+    Beats       = 1 << 5   // 0x20 - Beat detection
+};
+```
+
+### Capability Combinations
+
+<Tabs>
+  <Tab title="Output Only">
+    ```cpp
+    int capabilities() const override
+    {
+        return Output;
+    }
+    ```
+    
+    For output-only plugins (Art-Net output, DMX USB output).
+  </Tab>
+  
+  <Tab title="Input Only">
+    ```cpp
+    int capabilities() const override
+    {
+        return Input | Feedback;
+    }
+    ```
+    
+    For input-only plugins (MIDI input, HID).
+  </Tab>
+  
+  <Tab title="Bidirectional">
+    ```cpp
+    int capabilities() const override
+    {
+        return Output | Input | Infinite;
+    }
+    ```
+    
+    For bidirectional plugins supporting unlimited universes.
+  </Tab>
+  
+  <Tab title="Full Featured">
+    ```cpp
+    int capabilities() const override
+    {
+        return Output | Input | Feedback | Infinite | RDM;
+    }
+    ```
+    
+    For advanced plugins with all features.
+  </Tab>
+</Tabs>
+
+## Initialization Methods
+
+### init()
+
+Called once when the plugin is loaded.
+
+```cpp
+void init() override
+{
+    // Discover available devices/interfaces
+    // Initialize data structures
+    // Do NOT open devices yet - wait for openOutput/openInput
+    
+    scanDevices();
+    m_initialized = true;
+}
+```
+
+<Warning>
+Do not open hardware resources in `init()`. Resources should only be opened in `openOutput()` or `openInput()`.
+</Warning>
+
+### name()
+
+Returns the plugin name.
+
+```cpp
+QString name() const override
+{
+    return QString("My Plugin");
+}
+```
+
+<ParamField path="return" type="QString">
+  Plugin name (must not change over time)
+</ParamField>
+
+### capabilities()
+
+Returns plugin capability flags.
+
+```cpp
+int capabilities() const override
+{
+    return Output | Input | Infinite;
+}
+```
+
+<ParamField path="return" type="int">
+  OR'ed combination of Capability flags
+</ParamField>
+
+### pluginInfo()
+
+Returns HTML description of the plugin.
+
+```cpp
+QString pluginInfo() const override
+{
+    QString info;
+    info += "<HTML><BODY>";
+    info += "<H3>My Plugin</H3>";
+    info += "<P>This plugin supports my custom DMX hardware.</P>";
+    info += "<P>Supported devices:</P><UL>";
+    info += "<LI>Device Model A</LI>";
+    info += "<LI>Device Model B</LI>";
+    info += "</UL>";
+    info += "</BODY></HTML>";
+    return info;
+}
+```
+
+<ParamField path="return" type="QString">
+  HTML-formatted plugin information
+</ParamField>
+
+## Output Methods
+
+### outputs()
+
+Returns list of available output lines.
+
+```cpp
+QStringList outputs() const override
+{
+    QStringList list;
+    
+    for (int i = 0; i < m_devices.size(); i++)
+    {
+        list << QString("Device %1").arg(i + 1);
+    }
+    
+    // For network protocols, might return:
+    // list << "Universe 1";
+    // list << "Universe 2";
+    
+    return list;
+}
+```
+
+<ParamField path="return" type="QStringList">
+  List of output line names (displayed in UI)
+</ParamField>
+
+### outputInfo()
+
+Returns detailed information about an output line.
+
+```cpp
+QString outputInfo(quint32 output) override
+{
+    if (output >= (quint32)m_devices.size())
+        return QString();
+    
+    Device* dev = m_devices[output];
+    return QString("%1 - Serial: %2")
+        .arg(dev->name())
+        .arg(dev->serialNumber());
+}
+```
+
+<ParamField path="output" type="quint32">
+  Output line index (0-based)
+</ParamField>
+
+<ParamField path="return" type="QString">
+  Human-readable description of the output
+</ParamField>
+
+### openOutput()
+
+Opens an output line for a specific universe.
+
+```cpp
+bool openOutput(quint32 output, quint32 universe) override
+{
+    if (output >= (quint32)m_devices.size())
+        return false;
+    
+    // Check if already open
+    if (m_outputUniverse.contains(output))
+    {
+        if (m_outputUniverse[output] == universe)
+            return true;  // Already open for this universe
+        closeOutput(output, m_outputUniverse[output]);
+    }
+    
+    // Open the device
+    if (!m_devices[output]->open())
+        return false;
+    
+    // Store mapping
+    m_outputUniverse[output] = universe;
+    
+    return true;
+}
+```
+
+<ParamField path="output" type="quint32">
+  Output line to open
+</ParamField>
+
+<ParamField path="universe" type="quint32">
+  Universe number to associate with this output
+</ParamField>
+
+<ParamField path="return" type="bool">
+  `true` if successful, `false` otherwise
+</ParamField>
+
+### closeOutput()
+
+Closes an output line.
+
+```cpp
+void closeOutput(quint32 output, quint32 universe) override
+{
+    Q_UNUSED(universe)
+    
+    if (!m_outputUniverse.contains(output))
+        return;
+    
+    // Close the device
+    if (output < (quint32)m_devices.size())
+    {
+        m_devices[output]->close();
+    }
+    
+    // Remove mapping
+    m_outputUniverse.remove(output);
+}
+```
+
+<ParamField path="output" type="quint32">
+  Output line to close
+</ParamField>
+
+<ParamField path="universe" type="quint32">
+  Universe number (for validation)
+</ParamField>
+
+### writeUniverse()
+
+Writes DMX data to an output.
+
+```cpp
+void writeUniverse(quint32 universe, quint32 output,
+                   const QByteArray& data, bool dataChanged) override
+{
+    // Verify output is open for this universe
+    if (!m_outputUniverse.contains(output))
+        return;
+    if (m_outputUniverse[output] != universe)
+        return;
+    
+    // Optimization: only send if data changed
+    if (!dataChanged && m_onlyChanges)
+        return;
+    
+    // Send data to device
+    if (output < (quint32)m_devices.size())
+    {
+        m_devices[output]->writeDMX(data);
+    }
+}
+```
+
+<ParamField path="universe" type="quint32">
+  Universe number
+</ParamField>
+
+<ParamField path="output" type="quint32">
+  Output line to write to
+</ParamField>
+
+<ParamField path="data" type="const QByteArray&">
+  DMX data (512 bytes)
+</ParamField>
+
+<ParamField path="dataChanged" type="bool">
+  `true` if data changed since last call
+</ParamField>
+
+<Warning>
+This method is called at high frequency (typically 50Hz) from the MasterTimer thread. Keep it fast and thread-safe.
+</Warning>
+
+## Input Methods
+
+### inputs()
+
+Returns list of available input lines.
+
+```cpp
+QStringList inputs() const override
+{
+    QStringList list;
+    
+    for (int i = 0; i < m_inputDevices.size(); i++)
+    {
+        list << QString("Input %1").arg(i + 1);
+    }
+    
+    return list;
+}
+```
+
+### inputInfo()
+
+Returns detailed information about an input line.
+
+```cpp
+QString inputInfo(quint32 input) override
+{
+    if (input >= (quint32)m_inputDevices.size())
+        return QString();
+    
+    return m_inputDevices[input]->name();
+}
+```
+
+### openInput()
+
+Opens an input line.
+
+```cpp
+bool openInput(quint32 input, quint32 universe) override
+{
+    if (input >= (quint32)m_inputDevices.size())
+        return false;
+    
+    if (m_inputUniverse.contains(input))
+    {
+        if (m_inputUniverse[input] == universe)
+            return true;
+        closeInput(input, m_inputUniverse[input]);
+    }
+    
+    if (!m_inputDevices[input]->open())
+        return false;
+    
+    // Connect to device's data ready signal
+    connect(m_inputDevices[input], &InputDevice::dataReceived,
+            this, &MyPlugin::onInputData);
+    
+    m_inputUniverse[input] = universe;
+    
+    return true;
+}
+```
+
+### closeInput()
+
+Closes an input line.
+
+```cpp
+void closeInput(quint32 input, quint32 universe) override
+{
+    Q_UNUSED(universe)
+    
+    if (!m_inputUniverse.contains(input))
+        return;
+    
+    if (input < (quint32)m_inputDevices.size())
+    {
+        disconnect(m_inputDevices[input], nullptr, this, nullptr);
+        m_inputDevices[input]->close();
+    }
+    
+    m_inputUniverse.remove(input);
+}
+```
+
+### Emitting Input Data
+
+When input data is received, emit the `valueChanged` signal:
+
+```cpp
+void onInputData(quint32 input, const QByteArray& data)
+{
+    if (!m_inputUniverse.contains(input))
+        return;
+    
+    quint32 universe = m_inputUniverse[input];
+    
+    // Emit signal for each channel
+    for (int channel = 0; channel < data.size(); channel++)
+    {
+        uchar value = data[channel];
+        
+        // Only emit if value changed (optional optimization)
+        if (value != m_lastInputData[input][channel])
+        {
+            emit valueChanged(universe, input, channel, value);
+            m_lastInputData[input][channel] = value;
+        }
+    }
+}
+```
+
+## Configuration Methods
+
+### canConfigure()
+
+Returns whether the plugin has a configuration UI.
+
+```cpp
+bool canConfigure() override
+{
+    return true;  // Plugin has configuration dialog
+}
+```
+
+### configure()
+
+Shows the configuration dialog.
+
+```cpp
+void configure() override
+{
+    MyConfigDialog dialog;
+    if (dialog.exec() == QDialog::Accepted)
+    {
+        // Apply configuration changes
+        applySettings(dialog.getSettings());
+        
+        // Notify of changes
+        emit configurationChanged();
+    }
+}
+```
+
+### setupWidgetClassName()
+
+Returns the QML configuration widget class name (for QML UI).
+
+```cpp
+QString setupWidgetClassName() const override
+{
+    return QString("MyPluginConfig");
+}
+```
+
+## Parameter Methods
+
+### getParameter()
+
+Retrieves a custom parameter value.
+
+```cpp
+QVariant getParameter(quint32 universe, quint32 line,
+                     Capability type, QString name) override
+{
+    if (type == Output)
+    {
+        if (name == "IPAddress")
+            return m_outputIPs.value(line);
+        else if (name == "Port")
+            return m_outputPorts.value(line);
+    }
+    
+    return QVariant();
+}
+```
+
+### setParameter()
+
+Sets a custom parameter value.
+
+```cpp
+bool setParameter(quint32 universe, quint32 line,
+                 Capability type, QString name, QVariant value) override
+{
+    if (type == Output)
+    {
+        if (name == "IPAddress")
+        {
+            m_outputIPs[line] = value.toString();
+            return true;
+        }
+        else if (name == "Port")
+        {
+            m_outputPorts[line] = value.toInt();
+            return true;
+        }
+    }
+    
+    return false;
+}
+```
+
+## Plugin Registration
+
+### Qt Plugin Metadata
+
+```cpp
+class MyPlugin : public QLCIOPlugin
+{
+    Q_OBJECT
+    Q_INTERFACES(QLCIOPlugin)
+    Q_PLUGIN_METADATA(IID QLCIOPlugin_iid)
+    
+public:
+    // ...
+};
+```
+
+### Plugin IID
+
+The plugin interface identifier is defined as:
+
+```cpp
+#define QLCIOPlugin_iid "org.qlcplus.QLCIOPlugin"
+```
+
+## Thread Safety
+
+<Warning>
+Plugins must be thread-safe. The `writeUniverse()` method is called from the MasterTimer thread.
+</Warning>
+
+### Safe Practices
+
+```cpp
+class MyPlugin : public QLCIOPlugin
+{
+private:
+    QMutex m_mutex;
+    QMap<quint32, quint32> m_outputUniverse;
+    
+public:
+    void writeUniverse(quint32 universe, quint32 output,
+                      const QByteArray& data, bool dataChanged) override
+    {
+        QMutexLocker locker(&m_mutex);
+        
+        // Thread-safe access to shared data
+        if (!m_outputUniverse.contains(output))
+            return;
+        
+        // ...
+    }
+    
+    bool openOutput(quint32 output, quint32 universe) override
+    {
+        QMutexLocker locker(&m_mutex);
+        
+        // Thread-safe modification
+        m_outputUniverse[output] = universe;
+        
+        // ...
+    }
+};
+```
+
+## Helper Types
+
+### PluginUniverseDescriptor
+
+Describes a universe's plugin configuration:
+
+```cpp
+typedef struct
+{
+    quint32 inputLine;   // UINT_MAX if not patched
+    QMap<QString, QVariant> inputParameters;
+    
+    quint32 outputLine;  // UINT_MAX if not patched
+    QMap<QString, QVariant> outputParameters;
+} PluginUniverseDescriptor;
+```
+
+### Constants
+
+```cpp
+#define QLCIOPLUGINS_UNIVERSES 4  // Default universe count
+
+// Invalid line number
+static const quint32 QLCIOPlugin::invalidLine() { return UINT_MAX; }
+```
+
+## Complete Example
+
+See [Plugin Development Guide](/development/plugins) for a complete plugin implementation example.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Resource Management">
+    - Only open resources in `openOutput()` / `openInput()`
+    - Release resources in `closeOutput()` / `closeInput()`
+    - Don't leave connections open unnecessarily
+    - Check if already open before opening
+  </Accordion>
+
+  <Accordion title="Performance">
+    - Keep `writeUniverse()` fast (called at 50Hz)
+    - Avoid allocations in hot path
+    - Use efficient data structures
+    - Consider buffering if needed
+  </Accordion>
+
+  <Accordion title="Error Handling">
+    - Return `false` from `open*()` on failure
+    - Log errors with `qWarning()` or `qDebug()`
+    - Handle disconnections gracefully
+    - Recover automatically when possible
+  </Accordion>
+
+  <Accordion title="Thread Safety">
+    - Protect shared data with mutexes
+    - Use Qt's thread-safe signal/slot connections
+    - Be aware `writeUniverse()` runs in MasterTimer thread
+    - Avoid blocking operations
+  </Accordion>
+</AccordionGroup>
+
+## Resources
+
+- [Plugin Development Guide](/development/plugins)
+- [Plugin Interface Header](https://github.com/mcallegari/qlcplus/blob/master/plugins/interfaces/qlcioplugin.h)
+- [Example Plugins](https://github.com/mcallegari/qlcplus/tree/master/plugins)
+- [Architecture](/development/architecture)

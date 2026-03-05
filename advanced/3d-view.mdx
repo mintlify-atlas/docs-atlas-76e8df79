@@ -1,0 +1,528 @@
+---
+title: 3D View
+description: Real-time 3D visualization with lights, effects, and stage preview
+---
+
+The 3D View provides a fully interactive 3D rendering of your lighting setup, complete with real-time beam visualization, light scattering, and stage environments.
+
+## Overview
+
+The 3D View features:
+- Real-time 3D rendering with Qt3D
+- Volumetric light beams and scattering
+- Moving head visualization
+- Stage environments and props
+- Camera control and positioning
+- Generic 3D model import
+- Performance monitoring
+
+## 3D Rendering Engine
+
+### Qt3D Integration
+
+The 3D View is built on Qt3D framework:
+
+```cpp
+// From mainview3d.h:28
+#include <Qt3DCore/QEntity>
+#include <Qt3DCore/QTransform>
+#include <Qt3DLogic/QFrameAction>
+#include <Qt3DRender/QLayer>
+#include <Qt3DRender/QEffect>
+#include <Qt3DRender/QMaterial>
+#include <Qt3DRender/QSceneLoader>
+```
+
+This provides:
+- Hardware-accelerated rendering
+- Scene graph management
+- Material and lighting systems
+- Transform hierarchies
+
+### Scene Structure
+
+```cpp
+// From mainview3d.h:280
+/** Reference to the Scene3D component */
+QQuickItem *m_scene3D;
+
+/** Reference to the entity containing everything */
+QEntity *m_scene3DEntity;
+
+/** Reference to the scene root entity for items creation */
+QEntity *m_sceneRootEntity;
+```
+
+<Note>
+The scene is organized hierarchically with entities. Each fixture is an entity with child entities for components like arms, heads, and beams.
+</Note>
+
+## Fixture Visualization
+
+### 3D Fixture Models
+
+Fixtures are rendered using 3D mesh models:
+
+```cpp
+// From mainview3d.h:372
+enum FixtureMeshType
+{
+    NoMeshType = 0,
+    ParMeshType,
+    MovingHeadMeshType,
+    ScannerMeshType,
+    StrobeMeshType,
+    LEDBarMeshType,
+    DefaultMeshType
+};
+```
+
+### Creating Fixture Items
+
+```cpp
+// From mainview3d.h:217
+void createFixtureItems(quint32 fxID, QVector3D pos, bool mmCoords = true);
+
+void createFixtureItem(quint32 fxID, quint16 headIndex, quint16 linkedIndex, 
+                       QVector3D pos, bool mmCoords = true);
+```
+
+### Scene Item Structure
+
+```cpp
+// From mainview3d.h:73
+typedef struct
+{
+    /** Reference to the fixture root item */
+    QEntity *m_rootItem;
+    /** Reference to the root item transform component */
+    Qt3DCore::QTransform *m_rootTransform;
+    /** Reference to the arm entity used by moving heads */
+    QEntity *m_armItem;
+    /** Reference to the head entity used by moving heads */
+    QEntity *m_headItem;
+    /** The bounding volume information */
+    BoundingVolume m_volume;
+    /** The selection box entity */
+    QEntity *m_selectionBox;
+    /** Reference to the texture used to render gobo */
+    GoboTextureImage *m_goboTexture;
+} SceneItem;
+```
+
+<Steps>
+  <Step title="Load 3D Model">
+    Fixture definition includes 3D model reference
+  </Step>
+  <Step title="Create Entity">
+    QML component instantiates the 3D entity
+  </Step>
+  <Step title="Initialize Components">
+    Transform, materials, and effects are set up
+  </Step>
+  <Step title="Add to Scene">
+    Entity is added to the scene graph
+  </Step>
+</Steps>
+
+## Moving Head Simulation
+
+### Arm and Head Entities
+
+Moving heads have separate entities for pan and tilt:
+
+```cpp
+// From mainview3d.h:79
+/** Reference to the arm entity used by moving heads */
+QEntity *m_armItem;
+/** Reference to the head entity used by moving heads */
+QEntity *m_headItem;
+```
+
+The hierarchy:
+```
+Root Entity (base position)
+  └─ Arm Entity (pan rotation)
+      └─ Head Entity (tilt rotation)
+          └─ Light Cone Entity (beam output)
+```
+
+### Real-time Updates
+
+```cpp
+// From mainview3d.h:228
+/** Update the fixture preview items when some channels have changed */
+void updateFixture(Fixture *fixture, QByteArray &previous);
+
+/** Update a single fixture item for a specific Fixture ID, 
+    head index and linked index */
+void updateFixtureItem(Fixture *fixture, quint16 headIndex, 
+                      quint16 linkedIndex, QByteArray &previous);
+```
+
+Updates include:
+- Pan/tilt position
+- Color mixing
+- Gobo selection
+- Beam intensity
+- Strobe effects
+
+## Light Rendering
+
+### Gobo Projection
+
+Gobos are rendered as projected textures:
+
+```cpp
+// From mainview3d.h:50
+class GoboTextureImage final : public Qt3DRender::QPaintedTextureImage
+{
+public:
+    GoboTextureImage(int w, int h, QString filename);
+    
+    QString source() const;
+    void setSource(QString filename);
+    
+protected:
+    void paint(QPainter *painter) override;
+    
+private:
+    QSvgRenderer *m_renderer;
+    QString m_source;
+};
+```
+
+Gobos support:
+- SVG vector graphics
+- Raster images (PNG, JPEG)
+- Real-time texture updates
+- Color overlay
+
+### Light Matrix
+
+```cpp
+// From mainview3d.h:253
+/** Get the Fixture light 3D position for the provided $itemID */
+QVector3D lightPosition(quint32 itemID);
+
+/** Get the Fixture light matrix for the provided $itemID */
+QMatrix4x4 lightMatrix(quint32 itemID);
+```
+
+The light matrix defines:
+- Light position in 3D space
+- Light direction vector
+- Beam cone angle
+- Rotation and orientation
+
+## Camera Control
+
+### Camera Properties
+
+```cpp
+// From mainview3d.h:96
+Q_PROPERTY(QVector3D cameraPosition READ cameraPosition 
+           WRITE setCameraPosition NOTIFY cameraPositionChanged FINAL)
+Q_PROPERTY(QVector3D cameraUpVector READ cameraUpVector 
+           WRITE setCameraUpVector NOTIFY cameraUpVectorChanged FINAL)
+Q_PROPERTY(QVector3D cameraViewCenter READ cameraViewCenter 
+           WRITE setCameraViewCenter NOTIFY cameraViewCenterChanged FINAL)
+```
+
+### Camera Navigation
+
+- **Position**: Where the camera is located in 3D space
+- **Up Vector**: Which direction is "up" for the camera
+- **View Center**: What point the camera is looking at
+
+```cpp
+// From mainview3d.h:133
+/** Reset the camera position to initial values */
+void resetCameraPosition();
+```
+
+<Info>
+Use mouse/touch gestures to orbit, pan, and zoom the camera. Right-click drag to rotate, middle-click to pan, and scroll to zoom.
+</Info>
+
+## Render Quality
+
+### Quality Levels
+
+```cpp
+// From mainview3d.h:363
+enum RenderQuality
+{
+    LowQuality = 0,
+    MediumQuality,
+    HighQuality,
+    UltraQuality
+};
+```
+
+Quality affects:
+- **Shadow resolution**: Higher quality = sharper shadows
+- **Scattering samples**: More samples = smoother volumetric effects
+- **Anti-aliasing**: Better edge smoothing
+- **Performance**: Higher quality = lower frame rate
+
+```cpp
+// From mainview3d.h:386
+/** Get/Set the 3D render quality. This affects shadows and
+ *  scattering ray marching steps */
+RenderQuality renderQuality() const;
+void setRenderQuality(RenderQuality renderQuality);
+```
+
+<Note>
+Start with Medium quality and adjust based on your hardware performance. Use the FPS counter to monitor frame rate.
+</Note>
+
+## Environment
+
+### Stage Selection
+
+```cpp
+// From mainview3d.h:390
+/** The list of currently supported stage types */
+QStringList stagesList() const;
+
+/** Get/Set the stage QML resource index to be loaded at runtime */
+int stageIndex() const;
+void setStageIndex(int stageIndex);
+```
+
+Built-in stages provide:
+- Floor and walls
+- Truss structures
+- Stage rigging
+- Audience areas
+
+### Ambient Light
+
+```cpp
+// From mainview3d.h:397
+/** Get/Set the ambient light intensity */
+float ambientIntensity() const;
+void setAmbientIntensity(float ambientIntensity);
+```
+
+Ambient light (0.0 - 1.0):
+- **0.0**: Complete darkness (only fixture lights visible)
+- **0.5**: Dim house lights
+- **1.0**: Full house lights
+
+### Smoke Amount
+
+```cpp
+// From mainview3d.h:401
+/** Get/Set the amount of smoke in the environment */
+float smokeAmount() const;
+void setSmokeAmount(float smokeAmount);
+```
+
+Smoke/haze (0.0 - 1.0):
+- **0.0**: Clear air (minimal beam visibility)
+- **0.5**: Moderate haze
+- **1.0**: Heavy smoke
+
+<Info>
+Increasing smoke amount makes light beams more visible through volumetric scattering, but also reduces performance.
+</Info>
+
+## Generic 3D Models
+
+### Importing Models
+
+Add custom 3D models to the scene:
+
+```cpp
+// From mainview3d.h:304
+Q_INVOKABLE void createGenericItem(QString filename, int itemID);
+
+Q_INVOKABLE void initializeItem(int itemID, QEntity *fxEntity, 
+                                QSceneLoader *loader);
+```
+
+Supported formats:
+- GLTF/GLB
+- OBJ
+- FBX
+- DAE (Collada)
+
+### Generic Item Management
+
+```cpp
+// From mainview3d.h:323
+/** Get a list of generic items currently in the 3D scene */
+QVariant genericItemsList() const;
+
+/** Get the number of generic items currently selected */
+int genericSelectedCount() const;
+
+/** Remove the currently selected generic items from the 3D scene */
+Q_INVOKABLE void removeSelectedGenericItems();
+```
+
+### Transform Controls
+
+```cpp
+// From mainview3d.h:325
+void updateGenericItemPosition(quint32 itemID, QVector3D pos);
+QVector3D genericItemsPosition();
+void setGenericItemsPosition(QVector3D pos);
+
+void updateGenericItemRotation(quint32 itemID, QVector3D rot);
+QVector3D genericItemsRotation();
+void setGenericItemsRotation(QVector3D rot);
+
+void updateGenericItemScale(quint32 itemID, QVector3D scale);
+QVector3D genericItemsScale();
+void setGenericItemsScale(QVector3D scale);
+```
+
+<Steps>
+  <Step title="Import Model">
+    Click "Add 3D Model" and select file
+  </Step>
+  <Step title="Position">
+    Drag or use transform controls to position
+  </Step>
+  <Step title="Scale">
+    Adjust scale to match real-world size
+  </Step>
+  <Step title="Rotate">
+    Orient the model correctly
+  </Step>
+</Steps>
+
+## Performance Monitoring
+
+### Frame Counter
+
+```cpp
+// From mainview3d.h:182
+/** Enable/Disable a frame count signal */
+bool frameCountEnabled() const;
+void setFrameCountEnabled(bool enable);
+
+int FPS() const { return m_frameCount; }
+int minFPS() const { return m_minFrameCount; }
+int maxFPS() const { return m_maxFrameCount; }
+float avgFPS() const { return m_avgFrameCount; }
+```
+
+The frame counter tracks:
+- **Current FPS**: Instantaneous frame rate
+- **Min FPS**: Lowest frame rate since reset
+- **Max FPS**: Highest frame rate since reset  
+- **Avg FPS**: Average frame rate
+
+### Optimization
+
+```cpp
+// From mainview3d.h:203
+QFrameAction *m_frameAction;
+
+protected slots:
+    void slotFrameProcessed();
+```
+
+Performance tips:
+- Lower render quality for better FPS
+- Reduce smoke amount
+- Minimize active fixtures
+- Close other applications
+- Use dedicated GPU
+
+## Selection and Interaction
+
+### 3D Picking
+
+```cpp
+// From mainview3d.h:404
+Q_INVOKABLE void pickEntity(const float &aspect, 
+                           const QVector2D &ndcMousePos, 
+                           int modifiers);
+```
+
+Ray casting for selection:
+```cpp
+// From mainview3d.h:408
+QVector3D unprojectToWorld(const float &aspect, 
+                          const QVector2D &ndcMousePos);
+bool rayIntersectsAABB(const QVector3D &rayOrigin, 
+                      const QVector3D &rayDir,
+                      const QVector3D &center, 
+                      const QVector3D &extents, 
+                      float &hitDistance);
+```
+
+This enables:
+- Click to select fixtures
+- Multi-selection with Ctrl/Shift
+- Selection box visualization
+
+### Bounding Volumes
+
+```cpp
+// From mainview3d.h:67
+typedef struct
+{
+    QVector3D m_extents;
+    QVector3D m_center;
+} BoundingVolume;
+```
+
+Bounding volumes are used for:
+- Collision detection
+- Click selection
+- View frustum culling
+- Performance optimization
+
+## Best Practices
+
+- **Quality vs Performance**: Balance visual quality with frame rate needs
+- **Smoke Effects**: Use moderate smoke amounts for best beam visibility
+- **Camera Position**: Position camera for optimal viewing angle
+- **Model Complexity**: Keep imported models reasonably detailed
+- **Monitor FPS**: Keep frame rate above 30 FPS for smooth interaction
+- **Stage Selection**: Choose appropriate stage environment
+- **Ambient Light**: Adjust for venue simulation accuracy
+
+## Technical Architecture
+
+### Entity-Component System
+
+Qt3D uses an entity-component architecture:
+
+```cpp
+// From mainview3d.h:266
+QEntity *inspectEntity(QEntity *entity, SceneItem *meshRef,
+                      QLayer *layer, QEffect *effect,
+                      bool calculateVolume, QVector3D translation);
+```
+
+Entities can have:
+- Transform component (position, rotation, scale)
+- Material component (color, texture, shader)
+- Mesh component (3D geometry)
+- Light component (for light sources)
+
+### Render Pipeline
+
+```cpp
+// From mainview3d.h:289
+/** Reference to the light pass entity and material for uniform updates */
+QEntity *m_quadEntity;
+
+/** Reference to the render targets used for scattering */
+QRenderTarget *m_gBuffer;
+```
+
+The rendering uses:
+- Deferred rendering pipeline
+- G-buffer for geometry pass
+- Light accumulation pass
+- Volumetric scattering pass
+- Post-processing effects

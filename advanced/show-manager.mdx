@@ -1,0 +1,368 @@
+---
+title: Show Manager
+description: Timeline-based show programming with multiple tracks
+---
+
+The Show Manager provides a powerful timeline-based interface for creating complex, synchronized shows. It allows you to arrange multiple functions on parallel tracks with precise timing control.
+
+## Overview
+
+Show Manager enables:
+- Multi-track timeline editing
+- Precise timing and synchronization
+- Time or beat-based divisions
+- Visual function previews
+- Copy/paste and snapping tools
+
+## Shows and Tracks
+
+### Creating a Show
+
+A Show is a special function type that contains multiple tracks, each holding timed function items:
+
+```cpp
+// From showmanager.cpp:409
+if (m_currentShow == nullptr)
+{
+    QString defaultName = QString("%1 %2").arg(tr("New Show"))
+                                           .arg(m_doc->nextFunctionID());
+    m_currentShow = new Show(m_doc);
+    m_currentShow->setName(defaultName);
+    m_doc->addFunction(f);
+}
+```
+
+### Track Management
+
+**Adding Tracks**: Tracks are automatically created when you drag functions to an empty area, or you can add them manually.
+
+```cpp
+// From showmanager.cpp:434
+selectedTrack = new Track(Function::invalidId(), m_currentShow);
+selectedTrack->setName(tr("Track %1").arg(m_currentShow->tracks().count() + 1));
+m_currentShow->addTrack(selectedTrack);
+```
+
+**Track Properties**:
+- Each track can be muted independently
+- Solo mode mutes all other tracks
+- Tracks can be reordered by dragging
+- Tracks hold multiple ShowFunction items
+
+<Steps>
+  <Step title="Create Show">
+    Drag a function from Function Manager to Show Manager
+  </Step>
+  <Step title="Add Tracks">
+    Additional tracks are created automatically or manually
+  </Step>
+  <Step title="Arrange Functions">
+    Drag functions onto tracks at specific times
+  </Step>
+  <Step title="Adjust Timing">
+    Resize and move items for perfect synchronization
+  </Step>
+</Steps>
+
+## Timeline Controls
+
+### Time Division
+
+Shows support two timing modes:
+
+**Time Mode**: Real-time based divisions (seconds)
+```cpp
+// From showmanager.cpp:243
+if (division == Show::Time)
+{
+    setTimeScale(5.0);
+    m_currentShow->setTempoType(Function::Time);
+}
+```
+
+**Beat Mode**: Musical tempo-based divisions (beats per minute)
+```cpp
+// From showmanager.cpp:250
+else
+{
+    setTimeScale(1.0);
+    m_currentShow->setTempoType(Function::Beats);
+}
+```
+
+### Time Scale and Zoom
+
+The timeline can be zoomed to show more or less detail:
+
+```cpp
+// From showmanager.cpp:273
+void ShowManager::setTimeScale(float timeScale)
+{
+    m_timeScale = timeScale;
+    m_tickSize = app->pixelDensity() * (18 * tickScale);
+    emit timeScaleChanged(timeScale);
+}
+```
+
+<Info>
+Adjusting the time scale changes the pixel-to-time ratio, making it easier to work with very short or very long shows.
+</Info>
+
+## Show Items
+
+### Adding Functions
+
+Functions are added to the timeline by dragging from the Function Manager:
+
+```cpp
+// From showmanager.cpp:469
+ShowFunction *showFunc = selectedTrack->createShowFunction(functionID);
+showFunc->setStartTime(startTime);
+showFunc->setDuration(func->totalDuration() ? func->totalDuration() : 5000);
+showFunc->setColor(ShowFunction::defaultColor(func->type()));
+```
+
+### Item Properties
+
+- **Start Time**: When the function begins (in milliseconds)
+- **Duration**: How long the function runs
+- **Color**: Visual identification on timeline
+- **Lock Status**: Prevents accidental modification
+
+### Moving Items
+
+Items can be moved along the timeline and between tracks:
+
+```cpp
+// From showmanager.cpp:562
+bool ShowManager::checkAndMoveItem(ShowFunction *sf, int originalTrackIdx,
+                                   int newTrackIdx, int newStartTime,
+                                   bool itemSnapped)
+{
+    // Check for overlapping
+    bool overlapping = checkOverlapping(dstTrack, sf, newStartTime, 
+                                        sf->duration());
+    if (overlapping == true)
+        return false;
+    
+    // Move to new track if needed
+    if (newTrackIdx != originalTrackIdx)
+    {
+        srcTrack->removeShowFunction(sf, false);
+        dstTrack->addShowFunction(sf);
+    }
+}
+```
+
+<Note>
+The Show Manager prevents overlapping items on the same track. If you try to move an item to a position where it would overlap another, the operation is rejected.
+</Note>
+
+## Grid and Snapping
+
+### Grid Snapping
+
+Enable grid snapping to align items to the timeline divisions:
+
+```cpp
+// From showmanager.cpp:591
+if (m_gridEnabled && !itemSnapped)
+{
+    float xPos = ((float)newStartTime * m_tickSize) / (m_timeScale * 1000.0);
+    // Round to nearest snap position
+    xPos = qRound(xPos / m_tickSize) * m_tickSize;
+    // Recalculate time from pixels
+    newTime = xPos * (1000 * m_timeScale) / m_tickSize;
+}
+```
+
+### Snap Guide
+
+The snap guide feature shows vertical lines at item edges to help align items:
+
+```cpp
+// From showmanager.cpp:177
+QVariantList ShowManager::getSnapEdges(quint32 excludeFuncId,
+                                       double viewportLeft, 
+                                       double viewportRight)
+{
+    // Returns pixel X positions of all item edges
+    // Used to draw snap guide lines
+}
+```
+
+## Selection and Editing
+
+### Multi-Selection
+
+Select multiple items for batch operations:
+
+```cpp
+// From showmanager.cpp:789
+void ShowManager::setItemSelection(int trackIdx, ShowFunction *sf, 
+                                  QQuickItem *item, bool selected, 
+                                  int keyModifiers)
+{
+    bool allowMulti = m_multipleSelection
+            || (keyModifiers & Qt::ControlModifier)
+            || (keyModifiers & Qt::ShiftModifier);
+}
+```
+
+### Copy and Paste
+
+```cpp
+// From showmanager.cpp:1004
+void ShowManager::copyToClipboard()
+{
+    m_clipboard.clear();
+    for (SelectedShowItem item : m_selectedItems)
+        m_clipboard.append(item);
+}
+
+void ShowManager::pasteFromClipboard()
+{
+    // Paste items while maintaining relative timing
+    for (SelectedShowItem item : m_clipboard)
+    {
+        addItems(contextItem(), item.m_trackIndex,
+                 m_currentTime + item.m_showFunc->startTime() - lowerTime,
+                 QVariantList() << func->id());
+    }
+}
+```
+
+<Steps>
+  <Step title="Select Items">
+    Click items while holding Ctrl or Shift for multiple selection
+  </Step>
+  <Step title="Copy">
+    Press Ctrl+C or use the copy button
+  </Step>
+  <Step title="Position Cursor">
+    Click on the timeline where you want to paste
+  </Step>
+  <Step title="Paste">
+    Press Ctrl+V - items maintain their relative timing
+  </Step>
+</Steps>
+
+## Function Preview
+
+The Show Manager displays visual previews of function content:
+
+```cpp
+// From showmanager.cpp:936
+QVariantList ShowManager::previewData(Function *f) const
+{
+    switch (f->type())
+    {
+        case Function::ChaserType:
+        case Function::SequenceType:
+            // Show step dividers and fade times
+            data.append(StepDivider);
+            data.append(stepsTimeCounter);
+            break;
+        
+        case Function::AudioType:
+        case Function::VideoType:
+            // Show fade in/out markers
+            data.append(FadeIn);
+            data.append(f->fadeInSpeed());
+            break;
+    }
+}
+```
+
+Preview types include:
+- **StepDivider**: Shows steps in chasers/sequences
+- **FadeIn/FadeOut**: Displays fade times
+- **AudioData**: Waveform visualization for audio
+- **RepeatingDuration**: Loop indicator
+
+## Playback Control
+
+### Playing Shows
+
+```cpp
+// From showmanager.cpp:728
+void ShowManager::playShow()
+{
+    if (m_currentShow == nullptr)
+        return;
+    
+    m_currentShow->start(m_doc->masterTimer(), 
+                        FunctionParent::master(), 
+                        m_currentTime);
+    emit isPlayingChanged(true);
+}
+```
+
+### Time Cursor
+
+The playback cursor updates in real-time during playback:
+
+```cpp
+// From showmanager.cpp:904
+void ShowManager::slotTimeChanged(quint32 msec_time)
+{
+    m_currentTime = (int)msec_time;
+    emit currentTimeChanged(m_currentTime);
+}
+```
+
+<Info>
+You can start playback from any position by clicking on the timeline to set the cursor position.
+</Info>
+
+## Function Stretching
+
+When enabled, stretching automatically adjusts the function duration to match the show item duration:
+
+```cpp
+// From showmanager.h:140
+// Flag that indicates if a Function should be stretched
+// when the corresponding Show Item duration changes
+bool m_stretchFunctions;
+```
+
+This is useful for:
+- Adjusting scene hold times
+- Synchronizing function durations
+- Creating timing variations
+
+## Best Practices
+
+- **Organization**: Use descriptive track names and colors
+- **Grid Snapping**: Enable for precise alignment
+- **Preview**: Use preview data to verify function content
+- **Locking**: Lock finished items to prevent accidental changes
+- **Copy/Paste**: Duplicate similar sections quickly
+- **Time Division**: Choose time or beats based on your show type
+
+## Technical Notes
+
+### Overlap Detection
+
+```cpp
+// From showmanager.cpp:910
+bool ShowManager::checkOverlapping(Track *track, ShowFunction *sourceFunc,
+                                   quint32 startTime, quint32 duration) const
+{
+    foreach (ShowFunction *sf, track->showFunctions())
+    {
+        if (sf == sourceFunc)
+            continue;
+        
+        quint32 fst = sf->startTime();
+        if ((startTime >= fst && startTime <= fst + sf->duration()) ||
+            (fst >= startTime && fst <= startTime + duration))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+```
+
+This ensures items on the same track never overlap, maintaining show integrity.

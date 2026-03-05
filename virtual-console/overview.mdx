@@ -1,0 +1,178 @@
+---
+title: Virtual Console Overview
+description: Learn about QLC+'s Virtual Console for designing custom lighting control interfaces
+---
+
+The Virtual Console is QLC+'s powerful interface builder that allows you to create custom control panels for live lighting operation. It provides a visual workspace where you can add and arrange widgets like buttons, sliders, and cue lists to control your lighting fixtures and functions.
+
+## What is Virtual Console?
+
+Virtual Console is one of the core modules in QLC+ that enables you to:
+
+- Design custom control interfaces tailored to your specific show or venue
+- Create intuitive layouts with buttons, sliders, frames, and other widgets
+- Control functions, fixtures, and DMX channels in real-time
+- Map external controllers (MIDI, OSC, etc.) to interface elements
+- Build professional lighting control surfaces without physical hardware
+
+The Virtual Console is defined in the source code at `ui/src/virtualconsole/virtualconsole.h` and `qmlui/virtualconsole/virtualconsole.cpp`, serving as the central management system for all VC widgets.
+
+## Operating Modes
+
+Virtual Console operates in two distinct modes:
+
+### Design Mode
+
+In Design Mode, you can:
+
+- Add new widgets from the toolbar
+- Move and resize widgets
+- Edit widget properties and appearance
+- Configure external input sources
+- Set up keyboard shortcuts
+- Organize widgets into frames and pages
+
+<Note>
+Design Mode is only available when QLC+ is in Design mode. The toolbar and editing features are automatically disabled in Operate mode to prevent accidental changes during live operation.
+</Note>
+
+### Operate Mode
+
+In Operate Mode, the interface becomes active:
+
+- Widgets respond to mouse clicks and keyboard input
+- External controllers can trigger functions
+- You can control lights in real-time
+- The interface is locked to prevent modifications
+- Buttons trigger functions, sliders adjust values, and cue lists run sequences
+
+The mode is managed through the `Doc::Mode` enumeration, with the Virtual Console responding to `slotModeChanged()` signals to enable or disable editing capabilities.
+
+## Layout Concepts
+
+### Widget Hierarchy
+
+All Virtual Console elements are derived from the `VCWidget` base class, which provides:
+
+- Unique widget IDs for identification
+- Common appearance properties (colors, fonts, backgrounds)
+- External input handling
+- Keyboard shortcut support
+- Save/load functionality
+
+The widget hierarchy includes:
+
+```cpp
+VCWidget (base class)
+├── VCButton
+├── VCSlider
+├── VCFrame
+│   └── VCSoloFrame
+├── VCCueList
+├── VCLabel
+├── VCSpeedDial
+├── VCXYPad
+├── VCMatrix
+├── VCAudioTriggers
+├── VCClock
+└── VCAnimation
+```
+
+### Pages and Organization
+
+Virtual Console supports multi-page layouts:
+
+- **Pages**: Organize widgets across multiple pages to reduce clutter
+- **Frames**: Container widgets that group related controls
+- **Multipage Frames**: Special frames that can display different widget sets on different pages
+- **Solo Frames**: Frames that ensure only one child widget's function runs at a time
+
+### Properties System
+
+The Virtual Console has global properties managed by the `VCProperties` class:
+
+- Default grid size for widget alignment
+- Keyboard grab settings
+- Grand Master configuration
+- Default fade times
+- External input configuration
+
+## Widget Positioning
+
+Widgets in Virtual Console use absolute positioning:
+
+- Coordinates are stored in pixels (X, Y, Width, Height)
+- Grid snapping assists with alignment (default 5px resolution)
+- Widgets can be moved by dragging in Design Mode
+- Resize handles appear on selected widgets
+- Multiple widgets can be selected and moved together
+
+<CardGroup cols={2}>
+  <Card title="Widgets" icon="puzzle-piece" href="/virtual-console/widgets">
+    Explore all available widget types
+  </Card>
+  <Card title="Buttons" icon="circle-play" href="/virtual-console/buttons">
+    Learn about button widgets
+  </Card>
+  <Card title="Sliders" icon="sliders" href="/virtual-console/sliders">
+    Control intensity with sliders
+  </Card>
+  <Card title="Frames" icon="frame" href="/virtual-console/frames">
+    Organize with frame containers
+  </Card>
+</CardGroup>
+
+## External Input
+
+Virtual Console widgets can be controlled by external devices:
+
+- **MIDI Controllers**: Map MIDI notes and control changes to widgets
+- **OSC**: Control via Open Sound Control protocol
+- **ArtNet/sACN**: Trigger widgets from lighting consoles
+- **Keyboard**: Assign keyboard shortcuts to any widget
+
+Each widget stores input source information using the `QLCInputSource` class, which includes:
+
+- Universe and channel information
+- Value ranges (lower/upper thresholds)
+- Feedback support for controllers with LEDs
+
+External input is handled through the `slotInputValueChanged()` method, which is implemented by each widget type according to its specific behavior.
+
+## Appearance Customization
+
+All widgets support extensive appearance customization:
+
+- **Background Color**: Set custom colors or use system defaults
+- **Background Image**: Apply images to widget backgrounds
+- **Foreground Color**: Customize text and icon colors
+- **Font**: Set custom fonts for captions and labels
+- **Frame Style**: Choose between sunken, raised, or no frame
+
+These properties are saved in the workspace XML file and can be applied to individual widgets or multiple selections.
+
+## Live Edit Mode
+
+QLC+ supports a special **Live Edit** mode that allows limited editing during operation:
+
+- Toggle with the dedicated button in Operate mode
+- Adjust widget positions without stopping functions
+- Cannot add or delete widgets
+- Property editing is restricted
+- Useful for fine-tuning layouts during rehearsals
+
+This mode is controlled by the `m_liveEdit` flag and the `setLiveEdit()` method in the Virtual Console class.
+
+## Next Steps
+
+<Steps>
+  <Step title="Explore Widget Types">
+    Learn about the different widgets available in Virtual Console and their specific capabilities.
+  </Step>
+  <Step title="Create Your First Layout">
+    Start designing a custom control interface for your lighting setup.
+  </Step>
+  <Step title="Configure External Control">
+    Connect MIDI controllers or other input devices to your widgets.
+  </Step>
+</Steps>

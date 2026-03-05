@@ -1,122 +1,165 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "QLC+",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#f6d02f",
+    "light": "#84949c",
+    "dark": "#374e5b"
   },
   "favicon": "/favicon.svg",
+  "logo": {
+    "light": "https://media.brand.dev/89be0ab6-5639-427d-9c17-d50b0095b191.jpg",
+    "dark": "https://media.brand.dev/89be0ab6-5639-427d-9c17-d50b0095b191.jpg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/mcallegari/qlcplus"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/mcallegari/qlcplus",
+      "youtube": "https://www.youtube.com/watch?v=I9bccwcYQpM&list=PLHT-wIriuitDiW4A9oKSDr__Z_jcmMVdi",
+      "facebook": "https://www.facebook.com/qlcplus",
+      "instagram": "https://www.instagram.com/qlcplus/"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/universes",
+              "concepts/fixtures",
+              "concepts/functions",
+              "concepts/virtual-console"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Functions",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "functions/scenes",
+              "functions/chasers",
+              "functions/sequences",
+              "functions/efx",
+              "functions/rgb-matrix",
+              "functions/collections",
+              "functions/shows",
+              "functions/audio",
+              "functions/video"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Fixture Management",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "fixtures/adding-fixtures",
+              "fixtures/fixture-groups",
+              "fixtures/fixture-editor",
+              "fixtures/channel-modifiers"
+            ]
+          },
+          {
+            "group": "Virtual Console",
+            "pages": [
+              "virtual-console/overview",
+              "virtual-console/widgets",
+              "virtual-console/buttons",
+              "virtual-console/sliders",
+              "virtual-console/frames",
+              "virtual-console/cue-lists"
+            ]
+          },
+          {
+            "group": "Input/Output",
+            "pages": [
+              "io/input-output-mapping",
+              "io/profiles",
+              "io/protocols-overview"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/simple-desk",
+              "advanced/show-manager",
+              "advanced/2d-view",
+              "advanced/3d-view",
+              "advanced/web-access",
+              "advanced/audio-triggers"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Plugins",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Supported Protocols",
             "pages": [
-              "api-reference/introduction"
+              "plugins/overview",
+              "plugins/dmx-usb",
+              "plugins/artnet",
+              "plugins/e131-sacn",
+              "plugins/midi",
+              "plugins/osc",
+              "plugins/hid"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Hardware Support",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "plugins/enttec",
+              "plugins/dmxking",
+              "plugins/os2l",
+              "plugins/ola"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Building & Contributing",
+            "pages": [
+              "development/building",
+              "development/contributing",
+              "development/architecture",
+              "development/testing"
+            ]
+          },
+          {
+            "group": "API Reference",
+            "pages": [
+              "api/engine",
+              "api/functions",
+              "api/fixtures",
+              "api/plugin-interface"
+            ]
+          },
+          {
+            "group": "Fixture Development",
+            "pages": [
+              "development/fixture-definitions",
+              "development/rgb-scripts",
+              "development/plugins"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

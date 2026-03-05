@@ -1,0 +1,653 @@
+---
+title: OLA Plugin
+description: Open Lighting Architecture integration for advanced protocol support
+---
+
+## Overview
+
+The OLA (Open Lighting Architecture) plugin integrates QLC+ with the OLA framework, providing access to dozens of additional protocols and hardware interfaces. OLA acts as a middleware layer, allowing QLC+ to communicate with devices and protocols that don't have native QLC+ plugins.
+
+<Note>
+The plugin name as reported by QLC+ is **"OLA"**
+</Note>
+
+## What is OLA?
+
+Open Lighting Architecture (OLA) is an open-source framework for lighting control:
+
+**Key features:**
+- 50+ protocol plugins
+- Hardware abstraction layer
+- RDM support
+- Cross-platform (Linux, macOS, Windows)
+- Daemon-based architecture
+- Web-based configuration
+
+**Website:** [https://www.openlighting.org/](https://www.openlighting.org/)
+
+## Capabilities
+
+The OLA plugin supports:
+
+- **Output** - Send DMX data through OLA
+- **Infinite** - Support for multiple universes (OLA-dependent)
+
+<Warning>
+The OLA plugin is **output-only** in QLC+. Input requires OLA's own tools or configuration.
+</Warning>
+
+## Architecture
+
+OLA uses a client-server architecture:
+
+```
+QLC+ (OLA Plugin) ↔ OLA Daemon (olad) ↔ Hardware/Protocols
+```
+
+### Components
+
+<Steps>
+  <Step title="OLA Daemon (olad)">
+    Background service that manages protocols and hardware
+  </Step>
+  <Step title="OLA Plugin (QLC+)">
+    Client that connects to OLA daemon and sends DMX data
+  </Step>
+  <Step title="OLA Protocol Plugins">
+    Individual plugins for each hardware/protocol (ArtNet, DMX USB, etc.)
+  </Step>
+  <Step title="Hardware/Network">
+    Physical interfaces or network protocols
+  </Step>
+</Steps>
+
+### Plugin Structure
+
+```cpp
+class OlaIO : public QLCIOPlugin
+{
+    OlaOutThread *m_thread;      // Communication thread
+    QList<uint> m_outputs;       // Output universe mappings
+    bool m_embedServer;          // Embedded vs external daemon
+    QString m_configDir;         // OLA configuration directory
+};
+```
+
+## Installation
+
+### Linux
+
+<Tabs>
+  <Tab title="Ubuntu/Debian">
+    ```bash
+    # Install OLA
+    sudo apt-get update
+    sudo apt-get install ola
+    
+    # Start OLA daemon
+    sudo systemctl start olad
+    
+    # Enable at boot (optional)
+    sudo systemctl enable olad
+    
+    # Verify OLA is running
+    ola_dev_info
+    ```
+  </Tab>
+  <Tab title="Fedora/RHEL">
+    ```bash
+    # Install from source (OLA not in default repos)
+    sudo dnf install git automake libtool \
+      protobuf-devel libmicrohttpd-devel \
+      libusb-devel cppunit-devel
+    
+    git clone https://github.com/OpenLightingProject/ola.git
+    cd ola
+    autoreconf -i
+    ./configure
+    make
+    sudo make install
+    
+    # Start daemon
+    olad -f
+    ```
+  </Tab>
+  <Tab title="From Source">
+    ```bash
+    # Install dependencies
+    sudo apt-get install build-essential git \
+      automake libtool pkg-config \
+      libprotobuf-dev protobuf-compiler \
+      libmicrohttpd-dev libusb-1.0-0-dev \
+      libcppunit-dev
+    
+    # Clone and build
+    git clone https://github.com/OpenLightingProject/ola.git
+    cd ola
+    autoreconf -i
+    ./configure --enable-python-libs
+    make
+    sudo make install
+    sudo ldconfig
+    ```
+  </Tab>
+</Tabs>
+
+### macOS
+
+```bash
+# Install Homebrew (if not already installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install OLA
+brew install ola
+
+# Start daemon
+olad -f
+```
+
+### Windows
+
+OLA support on Windows is limited:
+
+1. Use Windows Subsystem for Linux (WSL)
+2. Install Linux version in WSL
+3. Or compile from source using MinGW
+
+<Note>
+For Windows, consider using native QLC+ plugins instead of OLA when possible.
+</Note>
+
+## Configuration
+
+### Server Modes
+
+The plugin supports two modes:
+
+```cpp
+bool isServerEmbedded() const;         // Check current mode
+void setServerEmbedded(bool embedded); // Set mode
+```
+
+<Tabs>
+  <Tab title="External Daemon (Recommended)">
+    ### External Daemon Mode
+    
+    OLA daemon runs as a system service:
+    
+    **Advantages:**
+    - Better performance
+    - Independent configuration
+    - Can be managed separately
+    - Web interface access
+    
+    **Setup:**
+    ```bash
+    # Start OLA daemon
+    sudo systemctl start olad
+    
+    # Configure in QLC+
+    # Plugin will connect to existing daemon
+    ```
+    
+    **OLA Web Interface:**
+    ```
+    http://localhost:9090
+    ```
+  </Tab>
+  <Tab title="Embedded Server">
+    ### Embedded Server Mode
+    
+    QLC+ starts and manages OLA daemon:
+    
+    **Advantages:**
+    - Simpler setup
+    - Automatic lifecycle
+    - No separate daemon management
+    
+    **Disadvantages:**
+    - Higher overhead
+    - Limited configuration
+    - QLC+ must manage OLA
+    
+    **Configuration:**
+    ```cpp
+    setParameter(universe, line, Output, "embedServer", true);
+    ```
+  </Tab>
+</Tabs>
+
+### Universe Mapping
+
+Map QLC+ universes to OLA universes:
+
+```cpp
+void setOutputUniverse(quint32 output, unsigned int universe);
+QList<uint> outputMapping() const;
+```
+
+**Example mapping:**
+```cpp
+QLC+ Output 0 → OLA Universe 1
+QLC+ Output 1 → OLA Universe 2
+QLC+ Output 2 → OLA Universe 5
+```
+
+### Custom Parameters
+
+```cpp
+void setParameter(quint32 universe, quint32 line,
+                  Capability type, QString name, QVariant value);
+```
+
+**Available parameters:**
+- Universe number mapping
+- Embedded server mode
+- Configuration directory
+
+## Output Configuration
+
+### Opening Output
+
+```cpp
+bool openOutput(quint32 output, quint32 universe);
+```
+
+When opening output:
+1. Plugin creates OLA client
+2. Connects to OLA daemon
+3. Registers universe
+4. Starts output thread
+
+### Output Thread
+
+OLA uses a dedicated thread for communication:
+
+```cpp
+class OlaOutThread : public QThread
+{
+    void run() override;  // Thread worker
+    // Handles OLA client communication
+};
+```
+
+The thread:
+- Maintains connection to OLA daemon
+- Queues DMX data for transmission
+- Handles OLA callbacks
+- Manages universe registration
+
+### Sending Data
+
+```cpp
+void writeUniverse(quint32 universe, quint32 output,
+                   const QByteArray& data, bool dataChanged);
+```
+
+Data flow:
+1. QLC+ engine calls `writeUniverse()`
+2. Plugin queues data for output thread
+3. Output thread sends to OLA daemon
+4. OLA daemon routes to appropriate plugin
+5. Protocol plugin transmits to hardware
+
+## OLA Protocols
+
+OLA supports many protocols. Here are some commonly used with QLC+:
+
+### Network Protocols
+
+<CardGroup cols={2}>
+  <Card title="Art-Net" icon="network-wired">
+    Ethernet DMX protocol, wide device support
+  </Card>
+  <Card title="E1.31 (sACN)" icon="network-wired">
+    Streaming ACN, ANSI standard
+  </Card>
+  <Card title="ShowNet" icon="network-wired">
+    Strand Lighting's network protocol
+  </Card>
+  <Card title="Pathport" icon="network-wired">
+    Pathway Connectivity protocol
+  </Card>
+  <Card title="OSC" icon="wave-square">
+    Open Sound Control
+  </Card>
+  <Card title="KiNET" icon="network-wired">
+    Color Kinetics protocol
+  </Card>
+</CardGroup>
+
+### USB Hardware
+
+- DMX USB Pro (ENTTEC)
+- Open DMX USB
+- DMXKing devices  
+- Velleman K8062D
+- USBDMX2
+- Anyma uDMX
+- Eurolite
+
+### Serial Protocols
+
+- DMX4Linux
+- Generic serial DMX
+
+### Embedded Devices
+
+- Raspberry Pi DMX (GPIO)
+- SPI-based DMX
+- BeagleBone
+
+### Specialty
+
+- Philips Hue
+- Renard
+- SandNet
+- ESP8266/ESP32 devices
+
+<Note>
+OLA's protocol support depends on which plugins are installed and configured. Check OLA's web interface for available protocols.
+</Note>
+
+## OLA Web Interface
+
+OLA provides a web interface for configuration:
+
+```
+http://localhost:9090
+```
+
+### Interface Features
+
+<Steps>
+  <Step title="Universe Management">
+    Create, configure, and patch universes
+  </Step>
+  <Step title="Plugin Configuration">
+    Enable/disable and configure protocol plugins
+  </Step>
+  <Step title="Port Patching">
+    Route universes to physical ports or protocols
+  </Step>
+  <Step title="RDM Discovery">
+    Discover and configure RDM devices
+  </Step>
+  <Step title="DMX Monitor">
+    Real-time view of DMX universe data
+  </Step>
+  <Step title="Plugin Status">
+    Monitor active plugins and connections
+  </Step>
+</Steps>
+
+### Common Tasks
+
+**Create a new universe:**
+1. Open web interface
+2. Go to "New Universe"
+3. Set universe ID and name
+4. Select input/output ports
+5. Save configuration
+
+**Enable a protocol:**
+1. Go to "Plugins"
+2. Find desired protocol plugin
+3. Enable plugin
+4. Configure plugin settings
+5. Restart OLA daemon if needed
+
+**Patch a universe:**
+1. Select universe
+2. Choose input port (if needed)
+3. Choose output port(s)
+4. Set priority (if multiple outputs)
+5. Apply changes
+
+## RDM Support
+
+OLA has extensive RDM support:
+
+### RDM Features
+
+- **Discovery** - Find RDM devices
+- **Parameter Management** - Read/write device settings
+- **Patch Management** - Set DMX addresses
+- **Sensor Data** - Read sensor information
+- **Device Info** - Manufacturer, model, etc.
+
+### Using RDM with OLA
+
+```bash
+# List RDM devices
+ola_rdm_discover -u 1
+
+# Get device info
+ola_rdm_get -u 1 -d 0001:12345678 device_info
+
+# Set DMX address
+ola_rdm_set -u 1 -d 0001:12345678 dmx_start_address 10
+```
+
+<Note>
+RDM operations are performed through OLA's tools, not directly through the QLC+ plugin.
+</Note>
+
+## Performance Considerations
+
+### Daemon Overhead
+
+OLA adds a layer between QLC+ and hardware:
+
+```
+QLC+ → OLA Plugin → OLA Daemon → Protocol Plugin → Hardware
+```
+
+**Latency:**
+- Minimal (1-5ms typically)
+- Depends on system performance
+- Negligible for most applications
+
+**CPU Usage:**
+- OLA daemon: 1-5% typical
+- Increases with active universes
+- Protocol-dependent
+
+### When to Use OLA
+
+**Use OLA when:**
+- Need protocols not natively supported by QLC+
+- Using specialty hardware
+- Need RDM features
+- Want centralized protocol management
+- Require OLA-specific features
+
+**Use native plugins when:**
+- Maximum performance needed
+- Protocol is natively supported (Art-Net, DMX USB, etc.)
+- Simpler configuration desired
+- OLA not available/supported
+
+## Troubleshooting
+
+### OLA Daemon Not Running
+
+```bash
+# Check if olad is running
+ps aux | grep olad
+
+# Start daemon manually
+olad -f  # Foreground mode (for debugging)
+olad -l 3  # With verbose logging
+
+# Check daemon status (systemd)
+sudo systemctl status olad
+```
+
+### Connection Failed
+
+<AccordionGroup>
+  <Accordion title="Verify OLA is running">
+    ```bash
+    # Test OLA connection
+    ola_dev_info
+    
+    # Should list available devices/plugins
+    ```
+  </Accordion>
+  <Accordion title="Check OLA socket">
+    ```bash
+    # OLA uses Unix socket or TCP
+    ls -l /var/run/ola/
+    
+    # Or check TCP port 9010
+    netstat -an | grep 9010
+    ```
+  </Accordion>
+  <Accordion title="Permissions">
+    ```bash
+    # Ensure user can access OLA socket
+    sudo usermod -a -G ola $USER
+    
+    # Or adjust socket permissions
+    sudo chmod 666 /var/run/ola/*
+    ```
+  </Accordion>
+  <Accordion title="Restart services">
+    ```bash
+    # Restart OLA daemon
+    sudo systemctl restart olad
+    
+    # Restart QLC+
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### No DMX Output
+
+<Steps>
+  <Step title="Check OLA web interface">
+    Verify universes are configured at http://localhost:9090
+  </Step>
+  <Step title="Verify port patching">
+    Ensure universe is patched to correct output port
+  </Step>
+  <Step title="Enable plugins">
+    Check that required protocol plugin is enabled
+  </Step>
+  <Step title="Test with OLA tools">
+    ```bash
+    # Send test data
+    ola_streaming_client -u 1 -d 255,255,255
+    ```
+  </Step>
+  <Step title="Check QLC+ patching">
+    Verify QLC+ universe is patched to OLA output
+  </Step>
+</Steps>
+
+### Universe Mismatch
+
+Ensure universe numbers match:
+
+```
+QLC+ Universe 1 → OLA Output 0 → OLA Universe X
+```
+
+**Check mapping:**
+1. QLC+ universe patching
+2. OLA plugin universe setting
+3. OLA web interface universe ID
+
+### Performance Issues
+
+1. **Check CPU usage** - OLA daemon using too much CPU?
+2. **Reduce active universes** - Only enable needed universes
+3. **Optimize protocol settings** - Adjust refresh rates
+4. **Use native plugins** - If available, native may be faster
+5. **Dedicated network** - For network protocols, use dedicated NIC
+
+## OLA Command Line Tools
+
+Useful OLA utilities:
+
+```bash
+# Device information
+ola_dev_info
+
+# Universe list
+ola_uni_info
+
+# Set DMX values
+ola_set_dmx -u 1 -d 255,128,0
+
+# Stream DMX data
+ola_streaming_client -u 1
+
+# RDM discovery
+ola_rdm_discover -u 1
+
+# Plugin info
+ola_plugin_info
+
+# Patch universe
+ola_patch -d 1 -p 1 -u 1
+
+# Record DMX
+ola_recorder -u 1 record.ola
+
+# Playback DMX
+ola_recorder -u 1 -p record.ola
+```
+
+## Configuration Files
+
+OLA configuration location:
+
+```bash
+# Linux
+~/.ola/
+/etc/ola/
+
+# macOS  
+~/Library/Application Support/ola/
+
+# Files:
+# - ola-client.conf - Client configuration
+# - ola-server.conf - Daemon configuration
+# - ola-{plugin}.conf - Plugin-specific settings
+```
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="OLA Documentation" icon="book">
+    [https://docs.openlighting.org/](https://docs.openlighting.org/)
+  </Card>
+  <Card title="OLA GitHub" icon="github">
+    [https://github.com/OpenLightingProject/ola](https://github.com/OpenLightingProject/ola)
+  </Card>
+  <Card title="OLA Forums" icon="comments">
+    [https://www.openlighting.org/forum/](https://www.openlighting.org/forum/)
+  </Card>
+  <Card title="Plugin List" icon="list">
+    [https://docs.openlighting.org/ola/doc/plugins.html](https://docs.openlighting.org/ola/doc/plugins.html)
+  </Card>
+</CardGroup>
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Art-Net Plugin" icon="network-wired" href="/plugins/artnet">
+    Native Art-Net support in QLC+
+  </Card>
+  <Card title="E1.31 Plugin" icon="network-wired" href="/plugins/e131-sacn">
+    Native E1.31 support in QLC+
+  </Card>
+  <Card title="DMX USB Plugin" icon="usb" href="/plugins/dmx-usb">
+    Native USB-DMX support
+  </Card>
+  <Card title="Plugin Overview" icon="plug" href="/plugins/overview">
+    Learn about the plugin architecture
+  </Card>
+</CardGroup>

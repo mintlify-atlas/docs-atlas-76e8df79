@@ -1,0 +1,303 @@
+---
+title: Virtual Console Widgets
+description: Complete reference of all widget types available in QLC+'s Virtual Console
+---
+
+Widgets are the building blocks of QLC+'s Virtual Console. Each widget type serves a specific purpose in controlling lighting functions, fixtures, and DMX channels. All widgets inherit from the `VCWidget` base class defined in `ui/src/virtualconsole/vcwidget.h`.
+
+## Widget Types
+
+QLC+ provides several widget types, each designed for specific control scenarios:
+
+### Control Widgets
+
+<CardGroup cols={2}>
+  <Card title="Button" icon="circle-play" href="/virtual-console/buttons">
+    Trigger functions with toggle or flash actions
+  </Card>
+  <Card title="Slider" icon="sliders" href="/virtual-console/sliders">
+    Control intensity levels and playback speed
+  </Card>
+  <Card title="Knob" icon="circle-notch">
+    Rotary control alternative to sliders
+  </Card>
+  <Card title="Speed Dial" icon="gauge">
+    Adjust function speed and fade times
+  </Card>
+</CardGroup>
+
+### Advanced Controls
+
+<CardGroup cols={2}>
+  <Card title="XY Pad" icon="grid">
+    Two-dimensional control for moving heads
+  </Card>
+  <Card title="Cue List" icon="list-ol" href="/virtual-console/cue-lists">
+    Sequential playback of chaser steps
+  </Card>
+  <Card title="Matrix" icon="border-all">
+    Control RGB matrix animations
+  </Card>
+  <Card title="Audio Triggers" icon="volume-high">
+    Trigger functions based on audio analysis
+  </Card>
+</CardGroup>
+
+### Organization Widgets
+
+<CardGroup cols={2}>
+  <Card title="Frame" icon="frame" href="/virtual-console/frames">
+    Container for organizing other widgets
+  </Card>
+  <Card title="Solo Frame" icon="layer-group">
+    Frame ensuring only one child runs at a time
+  </Card>
+  <Card title="Label" icon="tag">
+    Display text and images for organization
+  </Card>
+  <Card title="Clock" icon="clock">
+    Display current time or countdown timers
+  </Card>
+</CardGroup>
+
+### Special Widgets
+
+<Card title="Animation" icon="film">
+  Display animated RGB patterns and effects
+</Card>
+
+## Widget Type Enumeration
+
+The widget types are defined in the `VCWidget::WidgetType` enumeration:
+
+```cpp
+enum WidgetType
+{
+    UnknownWidget,
+    ButtonWidget,
+    SliderWidget,
+    XYPadWidget,
+    FrameWidget,
+    SoloFrameWidget,
+    SpeedDialWidget,
+    CueListWidget,
+    LabelWidget,
+    AudioTriggersWidget,
+    AnimationWidget,
+    ClockWidget
+};
+```
+
+Source: `ui/src/virtualconsole/vcwidget.h:123-137`
+
+## Common Widget Properties
+
+All widgets share common properties inherited from `VCWidget`:
+
+### Identification
+
+- **ID**: Unique identifier assigned by Virtual Console
+- **Caption**: Text label displayed on the widget
+- **Page**: Page number for multi-page layouts (0-based)
+
+### Appearance
+
+- **Background Color**: Custom background color or system default
+- **Background Image**: Optional image for widget background
+- **Foreground Color**: Text and icon color
+- **Font**: Custom font for caption text
+- **Frame Style**: Border appearance (None, Sunken, Raised)
+
+### Behavior
+
+- **Allow Children**: Whether widget can contain other widgets (frames only)
+- **Allow Resize**: Whether widget can be resized in design mode
+- **Disable State**: Disabled widgets don't respond to input in operate mode
+
+### External Control
+
+- **Input Sources**: External control mappings (MIDI, OSC, etc.)
+- **Key Sequence**: Keyboard shortcut for activation
+- **Feedback**: Send status updates to external controllers
+
+### Intensity
+
+- **Intensity**: Master intensity value (0.0 - 1.0)
+- **Submaster**: Control intensity of multiple functions together
+
+## Widget Lifecycle
+
+### Creation
+
+Widgets are created through the Virtual Console's add menu:
+
+1. User selects widget type from toolbar
+2. Virtual Console calls corresponding `slotAdd*()` method
+3. Widget is instantiated with default properties
+4. Widget receives unique ID from `newWidgetId()`
+5. Widget is added to parent frame or contents area
+6. Widget appears in design mode with resize handles
+
+Example from `virtualconsole.h:233-246`:
+
+```cpp
+public slots:
+    void slotAddButton();
+    void slotAddButtonMatrix();
+    void slotAddSlider();
+    void slotAddSliderMatrix();
+    void slotAddKnob();
+    void slotAddSpeedDial();
+    void slotAddXYPad();
+    void slotAddCueList();
+    void slotAddFrame();
+    void slotAddSoloFrame();
+    void slotAddLabel();
+    void slotAddAudioTriggers();
+    void slotAddClock();
+    void slotAddAnimation();
+```
+
+### Configuration
+
+Each widget type has a properties dialog:
+
+- Accessed by right-clicking and selecting "Edit Properties"
+- Implemented as separate dialog class (e.g., `VCButtonProperties`)
+- Allows configuration of widget-specific settings
+- Changes are applied immediately in design mode
+
+### Operation
+
+In operate mode, widgets become active:
+
+1. Widget monitors for user interaction (mouse, keyboard)
+2. External input sources are processed
+3. Widget performs its specific action (start function, adjust value, etc.)
+4. Feedback is sent to external controllers
+5. Widget state is updated visually
+
+### Persistence
+
+Widgets save their configuration to XML:
+
+- `saveXML()` writes widget properties to workspace file
+- `loadXML()` restores widget from workspace file
+- `postLoad()` performs post-loading initialization
+- Common properties are handled by `saveXMLCommon()` / `loadXMLCommon()`
+
+## Widget Selection
+
+In design mode, widgets can be selected for editing:
+
+- **Single Selection**: Click widget to select it
+- **Multiple Selection**: Ctrl+Click to add widgets to selection
+- **Group Operations**: Selected widgets can be moved, copied, or deleted together
+- **Selection Indicators**: Selected widgets show resize handles
+
+The Virtual Console maintains the selection list in `m_selectedWidgets` and provides methods:
+
+```cpp
+const QList<VCWidget*> selectedWidgets() const;
+void setWidgetSelected(VCWidget* widget, bool selected);
+bool isWidgetSelected(VCWidget* widget) const;
+void clearWidgetSelection();
+```
+
+Source: `virtualconsole.h:103-115`
+
+## Widget Clipboard
+
+Widgets support copy/paste operations:
+
+- **Cut** (Ctrl+X): Remove selected widgets to clipboard
+- **Copy** (Ctrl+C): Copy selected widgets to clipboard
+- **Paste** (Ctrl+V): Create copies of clipboard widgets
+
+Each widget must implement:
+
+```cpp
+virtual VCWidget* createCopy(VCWidget* parent) const = 0;
+virtual bool copyFrom(const VCWidget* widget);
+```
+
+Source: `vcwidget.h:194-199`
+
+## Input Source Management
+
+Widgets can have multiple input sources:
+
+- Each input source has a unique ID (0-255)
+- Sources include universe, channel, and value range
+- Widgets check incoming input against configured sources
+- Matching input triggers widget action
+
+Key methods:
+
+```cpp
+void setInputSource(QSharedPointer<QLCInputSource> const& source, quint8 id = 0);
+QSharedPointer<QLCInputSource> inputSource(quint8 id = 0) const;
+bool checkInputSource(quint32 universe, quint32 channel, uchar value, QObject *sender, quint32 id = 0);
+void sendFeedback(int value, quint8 id = 0);
+```
+
+Source: `vcwidget.h:391-457`
+
+## Widget States
+
+Widgets can be in various states:
+
+### Disable State
+
+- Disabled widgets are grayed out in operate mode
+- They don't respond to input
+- Can be controlled by parent frames
+- Useful for temporarily deactivating controls
+
+```cpp
+virtual void setDisableState(bool disable);
+virtual void enableWidgetUI(bool enable);
+bool isDisabled() const;
+```
+
+Source: `vcwidget.h:154-178`
+
+### Live Edit State
+
+- Allows limited editing in operate mode
+- Widget positions can be adjusted
+- Properties cannot be changed
+- Functions continue running
+
+```cpp
+virtual void setLiveEdit(bool liveEdit);
+void cancelLiveEdit();
+```
+
+Source: `vcwidget.h:572-577`
+
+## Widget Interactions
+
+Widgets can interact with each other:
+
+- **Solo Frames**: Stop sibling functions when new function starts
+- **Submasters**: Control intensity of multiple widgets
+- **Multipage Frames**: Show/hide widgets based on current page
+- **Function Notifications**: Widgets notify parents when starting functions
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Button Widgets" icon="circle-play" href="/virtual-console/buttons">
+    Learn how to use buttons to trigger functions
+  </Card>
+  <Card title="Slider Widgets" icon="sliders" href="/virtual-console/sliders">
+    Control intensity and playback with sliders
+  </Card>
+  <Card title="Frame Widgets" icon="frame" href="/virtual-console/frames">
+    Organize widgets with frames
+  </Card>
+  <Card title="Cue Lists" icon="list-ol" href="/virtual-console/cue-lists">
+    Create sequential show playback
+  </Card>
+</CardGroup>

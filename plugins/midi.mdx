@@ -1,0 +1,477 @@
+---
+title: MIDI Plugin
+description: MIDI input and output support for hardware controllers and feedback
+---
+
+## Overview
+
+The MIDI plugin enables QLC+ to communicate with MIDI (Musical Instrument Digital Interface) devices. This allows using MIDI controllers for input control and sending MIDI feedback to devices with motorized faders, LED rings, or other visual feedback mechanisms.
+
+<Note>
+The plugin name as reported by QLC+ is **"MIDI"**
+</Note>
+
+## Capabilities
+
+The MIDI plugin supports:
+
+- **Input** - Receive MIDI messages from controllers
+- **Output** - Send MIDI messages to devices
+- **Feedback** - Visual feedback to MIDI controllers with LEDs/displays
+
+## Supported Platforms
+
+The MIDI plugin has platform-specific implementations:
+
+- **Linux** - ALSA (Advanced Linux Sound Architecture)
+- **macOS** - Core MIDI
+- **Windows** - Windows MIDI API
+
+<Tabs>
+  <Tab title="Linux (ALSA)">
+    ### ALSA MIDI
+    
+    Uses the ALSA sequencer interface:
+    
+    ```cpp
+    // Files: midi/src/alsa/
+    alsamidienumerator.h     // Device enumeration
+    alsamidiinputdevice.h    // Input handling
+    alsamidioutputdevice.h   // Output handling
+    ```
+    
+    **Installation:**
+    ```bash
+    # Install ALSA development files
+    sudo apt-get install libasound2-dev
+    
+    # List MIDI devices
+    aconnect -l
+    ```
+    
+    **Permissions:**
+    ```bash
+    # Add user to audio group
+    sudo usermod -a -G audio $USER
+    ```
+  </Tab>
+  <Tab title="macOS">
+    ### Core MIDI
+    
+    Uses macOS Core MIDI framework:
+    
+    ```cpp
+    // Files: midi/src/macx/
+    coremidienumerator.h
+    coremidiinputdevice.h  
+    coremidioutputdevice.h
+    ```
+    
+    Core MIDI is included with macOS - no additional installation required.
+  </Tab>
+  <Tab title="Windows">
+    ### Windows MIDI
+    
+    Uses Windows Multimedia API:
+    
+    ```cpp
+    // Files: midi/src/win32/
+    win32midienumerator.h
+    win32midiinputdevice.h
+    win32midioutputdevice.h
+    ```
+    
+    Windows MIDI API is included with Windows - no additional installation required.
+  </Tab>
+</Tabs>
+
+## MIDI Protocol Basics
+
+### MIDI Messages
+
+MIDI uses messages to communicate. The most common for lighting control:
+
+<CardGroup cols={2}>
+  <Card title="Note On/Off" icon="music">
+    **Status:** 0x90 (on) / 0x80 (off)
+    
+    **Data:** Note number (0-127), Velocity (0-127)
+    
+    **Use:** Buttons, pads, triggers
+  </Card>
+  <Card title="Control Change" icon="sliders">
+    **Status:** 0xB0
+    
+    **Data:** Controller number (0-127), Value (0-127)
+    
+    **Use:** Faders, knobs, encoders
+  </Card>
+  <Card title="Program Change" icon="list">
+    **Status:** 0xC0
+    
+    **Data:** Program number (0-127)
+    
+    **Use:** Scene/preset selection
+  </Card>
+  <Card title="Pitch Bend" icon="wave-square">
+    **Status:** 0xE0
+    
+    **Data:** 14-bit value (0-16383)
+    
+    **Use:** Pitch wheels, high-res faders
+  </Card>
+</CardGroup>
+
+### MIDI Channels
+
+MIDI supports 16 channels (1-16) per port. Devices can listen on specific channels:
+
+```cpp
+#define MIDI_MIDICHANNEL "midichannel"  // Configure channel per universe
+```
+
+<Note>
+Channel 10 is traditionally reserved for drums in music, but lighting controllers can use any channel.
+</Note>
+
+## Configuration
+
+### Custom Parameters
+
+```cpp
+#define MIDI_MIDICHANNEL "midichannel"   // MIDI channel (1-16)  
+#define MIDI_MODE "mode"                 // Input/output mode
+#define MIDI_INITMESSAGE "initmessage"   // Initialization SysEx message
+```
+
+### Setting MIDI Channel
+
+```cpp
+// Set MIDI channel for a universe
+setParameter(universe, line, Output, "midichannel", 1);  // Channel 1
+```
+
+### Initialization Messages
+
+Some MIDI controllers require initialization messages (typically SysEx) to enter specific modes:
+
+```cpp
+setParameter(universe, line, Output, "initmessage", sysexData);
+```
+
+**Example SysEx (Novation Launchpad):**
+```
+F0 00 20 29 02 18 0E 01 F7  // Enter Live mode
+```
+
+## Input Configuration
+
+### Opening MIDI Input
+
+```cpp
+bool openInput(quint32 input, quint32 universe);
+```
+
+When a MIDI input is opened:
+1. Plugin locates the MIDI input device
+2. Opens the device for reading
+3. Starts listening for MIDI messages
+
+### Receiving MIDI Messages
+
+When MIDI messages arrive:
+
+```cpp
+slot void slotValueChanged(const QVariant& uid, ushort channel, uchar value);
+```
+
+The plugin:
+1. Receives MIDI message from device
+2. Parses message type and data
+3. Maps to QLC+ channel (based on message type and number)
+4. Emits `valueChanged()` signal
+
+### MIDI to QLC+ Channel Mapping
+
+MIDI messages are mapped to QLC+ channels:
+
+```
+Channel = (Message Type Offset) + (MIDI Number)
+```
+
+**Example offsets:**
+- Note messages: Channel 0-127
+- Control Change: Channel 128-255
+- Program Change: Channel 256-383
+
+<Accordion title="Why channel offsets?">
+Offsets allow different MIDI message types to coexist without collision. A Note On with number 64 and a Control Change with number 64 map to different QLC+ channels.
+</Accordion>
+
+## Output Configuration
+
+### Opening MIDI Output
+
+```cpp
+bool openOutput(quint32 output, quint32 universe);
+```
+
+### Sending MIDI Messages
+
+```cpp
+void writeUniverse(quint32 universe, quint32 output,
+                   const QByteArray& data, bool dataChanged);
+```
+
+The plugin:
+1. Receives DMX-style data from QLC+ (0-255 values)
+2. Converts to appropriate MIDI messages
+3. Sends to MIDI output device
+
+### Sending SysEx Messages
+
+For System Exclusive messages:
+
+```cpp
+void sendSysEx(quint32 output, const QByteArray &data);
+```
+
+SysEx messages allow device-specific commands:
+- Configuration changes
+- LED color control
+- Mode switching
+- Firmware updates
+
+## Feedback Support
+
+Many MIDI controllers have LEDs, motorized faders, or displays that can show the current state:
+
+```cpp
+void sendFeedBack(quint32 universe, quint32 output, 
+                  quint32 channel, uchar value, const QVariant &params);
+```
+
+Feedback enables:
+- Button LED states (on/off, colors)
+- Fader position updates
+- Display information
+- Ring LED positions
+
+<Note>
+Feedback requires the controller to support MIDI input for receiving feedback messages.
+</Note>
+
+## MIDI Templates
+
+QLC+ uses MIDI templates (`.qxm` files) to define controller-specific mappings:
+
+```cpp
+#define KExtMidiTemplate ".qxm"  // 'Q'LC+ 'X'ml 'M'idi template
+```
+
+### Template Features
+
+- **Input Profiles** - Map MIDI messages to QLC+ inputs
+- **Output Profiles** - Define feedback behavior
+- **Initialization** - SysEx setup messages
+- **Channel Naming** - Human-readable names for controls
+
+### Template Locations
+
+```cpp
+QDir userMidiTemplateDirectory() const;   // User templates
+QDir systemMidiTemplateDirectory() const; // System templates
+```
+
+**Typical paths:**
+- Linux: `~/.qlcplus/miditemplate/` and `/usr/share/qlcplus/miditemplate/`
+- macOS: `~/Library/Application Support/QLC+/MIDITemplates/`
+- Windows: `%USERPROFILE%\QLC+\MIDITemplates\`
+
+### Creating Custom Templates
+
+<Steps>
+  <Step title="Define MIDI controller">
+    Specify manufacturer, model, and MIDI channels
+  </Step>
+  <Step title="Map input controls">
+    Associate MIDI messages with QLC+ input channels
+  </Step>
+  <Step title="Configure feedback">
+    Define how QLC+ should send feedback to the device
+  </Step>
+  <Step title="Add initialization">
+    Include any required SysEx setup messages
+  </Step>
+  <Step title="Save as .qxm file">
+    Place in user template directory
+  </Step>
+</Steps>
+
+## Common MIDI Controllers
+
+### Novation Launchpad Series
+
+- **Type:** Button grid controller
+- **Features:** RGB LEDs, velocity-sensitive pads
+- **MIDI:** Note messages for buttons, CC for mode controls
+- **Feedback:** Full RGB LED control
+
+### Behringer BCF2000/BCR2000
+
+- **Type:** Fader and encoder controller
+- **Features:** Motorized faders (BCF2000), encoders with LEDs
+- **MIDI:** CC messages, motor feedback
+- **Feedback:** Fader motors, LED rings
+
+### Akai APC Series
+
+- **Type:** Grid + fader controller
+- **Features:** Button grid, faders, transport controls
+- **MIDI:** Note and CC messages
+- **Feedback:** Multi-color LED buttons
+
+### Korg nanoKONTROL
+
+- **Type:** Compact fader controller  
+- **Features:** Faders, knobs, transport buttons
+- **MIDI:** CC messages
+- **Feedback:** LED buttons
+
+## Hotplug Support
+
+The MIDI plugin supports USB hotplug:
+
+```cpp
+public slots:
+    void slotDeviceAdded(uint vid, uint pid);
+    void slotDeviceRemoved(uint vid, uint pid);
+```
+
+Devices are automatically detected when connected/disconnected.
+
+## Performance Considerations
+
+### MIDI Timing
+
+MIDI is relatively slow (31.25 kbaud) compared to modern protocols:
+
+- **Single message:** ~1ms transmission time
+- **Full controller state:** 10-50ms depending on message count
+
+<Warning>
+Avoid sending excessive MIDI messages. Most controllers have input buffers that can overflow if messages are sent too rapidly.
+</Warning>
+
+### Feedback Optimization
+
+- Only send feedback for changed values
+- Throttle feedback updates if necessary
+- Use running status to reduce message size
+- Batch related updates when possible
+
+## Troubleshooting
+
+### Device Not Detected
+
+<AccordionGroup>
+  <Accordion title="Check USB connection">
+    Ensure MIDI controller is properly connected and powered
+  </Accordion>
+  <Accordion title="Verify drivers (Windows)">
+    Some controllers require manufacturer-specific drivers
+  </Accordion>
+  <Accordion title="Check permissions (Linux)">
+    User must be in `audio` group: `sudo usermod -a -G audio $USER`
+  </Accordion>
+  <Accordion title="List MIDI devices">
+    **Linux:** `aconnect -l`
+    
+    **macOS:** Audio MIDI Setup app
+    
+    **Windows:** Device Manager > Sound, video and game controllers
+  </Accordion>
+</AccordionGroup>
+
+### No MIDI Input
+
+1. Verify the input is opened in QLC+
+2. Check MIDI channel configuration matches device
+3. Test with a MIDI monitor application
+4. Ensure controller is in correct mode (some have multiple modes)
+
+### No MIDI Output/Feedback
+
+1. Verify output is opened and patched
+2. Check controller supports MIDI input (for feedback)
+3. Verify MIDI channel matches
+4. Test SysEx initialization if required
+5. Check if controller requires specific mode for feedback
+
+### ALSA Configuration (Linux)
+
+```bash
+# List all MIDI ports
+aconnect -l
+
+# Connect ports manually (testing)
+aconnect [sender]:[port] [receiver]:[port]
+
+# Example
+aconnect 128:0 129:0  # Connect port 128:0 to 129:0
+```
+
+## MIDI Technical Reference
+
+### Message Format
+
+MIDI messages consist of:
+1. **Status Byte** - Message type + channel
+2. **Data Bytes** - Message-specific data (0-2 bytes)
+
+```
+Status Byte:  1nnncccc
+  1 = Status byte flag
+  nnn = Message type (3 bits)
+  cccc = Channel (4 bits, 0-15 = channels 1-16)
+
+Data Bytes: 0xxxxxxx  
+  0 = Data byte flag
+  xxxxxxx = Data value (7 bits, 0-127)
+```
+
+### Common Status Bytes
+
+| Message | Status | Data 1 | Data 2 |
+|---------|--------|--------|--------|
+| Note Off | 0x80-0x8F | Note | Velocity |
+| Note On | 0x90-0x9F | Note | Velocity |
+| Poly Aftertouch | 0xA0-0xAF | Note | Pressure |
+| Control Change | 0xB0-0xBF | Controller | Value |
+| Program Change | 0xC0-0xCF | Program | - |
+| Channel Aftertouch | 0xD0-0xDF | Pressure | - |
+| Pitch Bend | 0xE0-0xEF | LSB | MSB |
+
+### System Exclusive (SysEx)
+
+```
+F0 [Manufacturer ID] [Device Data...] F7
+  F0 = SysEx start
+  F7 = SysEx end
+```
+
+SysEx messages are manufacturer-specific and unlimited in length.
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="HID Plugin" icon="gamepad" href="/plugins/hid">
+    USB HID controllers (joysticks, gamepads)
+  </Card>
+  <Card title="OSC Plugin" icon="wave-square" href="/plugins/osc">
+    Open Sound Control protocol
+  </Card>
+  <Card title="Plugin Overview" icon="plug" href="/plugins/overview">
+    Learn about the plugin architecture
+  </Card>
+</CardGroup>

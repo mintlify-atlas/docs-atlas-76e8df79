@@ -1,0 +1,356 @@
+---
+title: DMX USB Plugin
+description: USB-to-DMX interface support for multiple hardware manufacturers
+---
+
+## Overview
+
+The DMX USB plugin provides support for USB-to-DMX interfaces from various manufacturers. It handles device detection, initialization, and data transmission for both input and output operations.
+
+<Note>
+The plugin name as reported by QLC+ is **"DMX USB"**
+</Note>
+
+## Capabilities
+
+The DMX USB plugin supports:
+
+- **Output** - Send DMX data to fixtures
+- **Input** - Receive DMX data from other sources
+- **RDM** - Remote Device Management (device-dependent)
+
+## Supported Devices
+
+### ENTTEC Devices
+
+<CardGroup cols={2}>
+  <Card title="DMX USB Pro" icon="microchip">
+    Professional USB-to-DMX interface with RDM support
+  </Card>
+  <Card title="DMX USB Pro Mk2" icon="microchip">
+    Dual DMX output, 1 input, MIDI I/O
+  </Card>
+  <Card title="Open DMX USB" icon="microchip">
+    Entry-level output-only interface
+  </Card>
+</CardGroup>
+
+### DMXKing Devices
+
+<CardGroup cols={2}>
+  <Card title="ultraDMX Pro" icon="microchip">
+    High-performance 2 output + 1 input interface
+  </Card>
+</CardGroup>
+
+### Other Supported Hardware
+
+- **Eurolite USB DMX512 Pro** - Output interface
+- **Vince USB-DMX512** - TX/RX interface
+- **DMX4ALL** - Output-only interface
+- **usbdmx.com** - Legacy interface support
+
+See the [ENTTEC](/plugins/enttec) and [DMXKing](/plugins/dmxking) pages for device-specific details.
+
+## Widget Types
+
+The plugin recognizes different widget types from the `DMXUSBWidget` base class:
+
+```cpp
+enum Type
+{
+    ProRXTX,    // Enttec Pro widget (TX/RX)
+    OpenTX,     // Enttec Open widget (TX only)
+    OpenRX,     // FTDI DMX widget (RX only)
+    ProMk2,     // Enttec Pro Mk2 (2 TX, 1 RX, MIDI)
+    UltraPro,   // DMXKing Ultra Pro (2 TX, 1 RX)
+    DMX4ALL,    // DMX4ALL widget (TX only)
+    VinceTX,    // Vince USB-DMX512 (TX)
+    Eurolite,   // Eurolite USB DMX512 Pro
+    USBDMXLegacy // usbdmx.com legacy interface
+};
+```
+
+## Configuration
+
+The plugin supports configuration through the QLC+ interface.
+
+### Device Detection
+
+Devices are automatically detected when:
+- QLC+ starts
+- The plugin is initialized
+- USB hotplug events occur (device connected/disconnected)
+
+```cpp
+bool rescanWidgets();  // Manually trigger device scan
+```
+
+### Hotplug Support
+
+The plugin automatically detects USB device changes:
+
+```cpp
+public slots:
+    void slotDeviceAdded(uint vid, uint pid);    // Device connected
+    void slotDeviceRemoved(uint vid, uint pid);  // Device disconnected
+```
+
+<Note>
+When a device is connected or disconnected, the plugin automatically updates its configuration and notifies QLC+ via the `configurationChanged()` signal.
+</Note>
+
+## Hardware Drivers
+
+The plugin supports three different USB driver interfaces:
+
+### FTDI D2XX (FTD2XX)
+
+Propriety FTDI driver for Windows and macOS:
+
+```cpp
+#if defined(FTD2XX)
+  #include "ftd2xx-interface.h"
+#endif
+```
+
+**Pros:**
+- High performance
+- Official FTDI support
+- Low latency
+
+**Cons:**
+- Proprietary (not open source)
+- Conflicts with VCP drivers
+
+### libFTDI
+
+Open-source alternative to FTDI's proprietary driver:
+
+```cpp
+#if defined(LIBFTDI) || defined(LIBFTDI1)
+  #include "libftdi-interface.h"
+#endif
+```
+
+**Pros:**
+- Open source
+- Cross-platform
+- No driver conflicts
+
+**Cons:**
+- Slightly lower performance than D2XX
+
+### QtSerialPort (QTSERIAL)
+
+Qt's built-in serial port library:
+
+```cpp
+#if defined(QTSERIAL)
+  #include "qtserial-interface.h"
+#endif
+```
+
+**Pros:**
+- No external dependencies
+- Cross-platform
+- Modern Qt API
+
+**Cons:**
+- Limited to serial-compatible devices
+
+<Warning>
+**Important:** FTDI VCP (Virtual COM Port) interface is not directly supported. The plugin requires either D2XX, libFTDI, or QtSerialPort drivers.
+</Warning>
+
+## Output Configuration
+
+Each USB widget can have multiple output lines:
+
+```cpp
+bool openOutput(quint32 output, quint32 universe);
+void closeOutput(quint32 output, quint32 universe);
+```
+
+### Writing DMX Data
+
+```cpp
+void writeUniverse(quint32 universe, quint32 output, 
+                   const QByteArray& data, bool dataChanged);
+```
+
+**Parameters:**
+- `universe` - QLC+ universe index
+- `output` - Plugin output line number
+- `data` - DMX channel data (0-512 bytes)
+- `dataChanged` - Optimization flag indicating if data changed
+
+### Output Frequency
+
+DMX output follows the DMX512 specification:
+
+```cpp
+#define DEFAULT_OUTPUT_FREQUENCY 44  // 44 Hz per DMX spec
+```
+
+Some devices allow custom output frequencies:
+
+```cpp
+virtual int outputFrequency();
+virtual void setOutputFrequency(int frequency);
+```
+
+## Input Configuration
+
+Devices with input capabilities can receive DMX data:
+
+```cpp
+bool openInput(quint32 input, quint32 universe);
+void closeInput(quint32 input, quint32 universe);
+```
+
+Received data is reported via signals:
+
+```cpp
+signal void valueChanged(quint32 universe, quint32 input, 
+                        quint32 channel, uchar value);
+```
+
+## RDM Support
+
+Remote Device Management is supported on compatible hardware:
+
+```cpp
+bool sendRDMCommand(quint32 universe, quint32 line, 
+                    uchar command, QVariantList params);
+```
+
+RDM commands include:
+- **Discovery** - Find RDM-capable devices
+- **Get** - Read device parameters
+- **Set** - Write device parameters
+
+<Accordion title="Supported RDM Devices">
+Currently, RDM is supported on:
+- ENTTEC DMX USB Pro
+- ENTTEC DMX USB Pro Mk2  
+- DMXKing ultraDMX Pro
+
+The device must have `supportRDM()` returning true.
+</Accordion>
+
+## Multi-Port Widgets
+
+Some widgets support multiple DMX ports:
+
+### Port Flags
+
+```cpp
+enum LineFlags
+{
+    None   = 0,
+    DMX    = 1 << 0,      // DMX512 protocol
+    MIDI   = 1 << 1,      // MIDI protocol
+    Input  = 1 << 2,      // Input capability
+    Output = 1 << 3,      // Output capability
+    ArtNet_sACN_Forward = 1 << 4  // Network forwarding
+};
+```
+
+### ENTTEC Pro Mk2
+
+The Pro Mk2 has 5 ports:
+- Port 1: DMX Output
+- Port 2: DMX Output
+- Port 3: DMX Input
+- Port 4: MIDI Output
+- Port 5: MIDI Input
+
+### DMXKing ultraDMX Pro
+
+The ultraDMX Pro has 3 ports:
+- Port 1: DMX Output
+- Port 2: DMX Output
+- Port 3: DMX Input
+
+## Platform-Specific Notes
+
+### Windows
+
+<Steps>
+  <Step title="Install FTDI D2XX drivers">
+    Download from FTDI website or use the bundled installer
+  </Step>
+  <Step title="Uninstall VCP drivers">
+    D2XX and VCP drivers cannot coexist
+  </Step>
+  <Step title="Connect device">
+    QLC+ should automatically detect the device
+  </Step>
+</Steps>
+
+### Linux
+
+```bash
+# Add user to dialout group for serial port access
+sudo usermod -a -G dialout $USER
+
+# Install libftdi (if using libFTDI driver)
+sudo apt-get install libftdi1
+
+# Logout and login for group changes to take effect
+```
+
+### macOS
+
+Drivers are typically included with QLC+ or automatically installed via FTDI.
+
+<Warning>
+macOS may require driver signing approval in System Preferences > Security & Privacy.
+</Warning>
+
+## Troubleshooting
+
+### Device Not Detected
+
+<AccordionGroup>
+  <Accordion title="Check USB connection">
+    Ensure the device is firmly plugged in and powered
+  </Accordion>
+  <Accordion title="Verify driver installation">
+    Check that the appropriate driver (D2XX, libFTDI, or QtSerialPort) is installed
+  </Accordion>
+  <Accordion title="Check permissions (Linux)">
+    Ensure your user is in the `dialout` group
+  </Accordion>
+  <Accordion title="Rescan for devices">
+    Use the configuration dialog to manually rescan for widgets
+  </Accordion>
+</AccordionGroup>
+
+### No DMX Output
+
+1. Verify the output is opened in QLC+ (check universe patching)
+2. Check DMX cables and connections
+3. Ensure fixtures are addressed correctly
+4. Test with a known-working fixture
+
+### Performance Issues
+
+- Use D2XX driver for best performance (Windows/macOS)
+- Reduce output frequency if experiencing timing issues
+- Check for USB hub issues (use direct connection if possible)
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="ENTTEC Devices" icon="microchip" href="/plugins/enttec">
+    Detailed ENTTEC device information
+  </Card>
+  <Card title="DMXKing Devices" icon="microchip" href="/plugins/dmxking">
+    DMXKing-specific configuration
+  </Card>
+  <Card title="Plugin Overview" icon="plug" href="/plugins/overview">
+    Learn about the plugin architecture
+  </Card>
+</CardGroup>

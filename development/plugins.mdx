@@ -1,0 +1,736 @@
+---
+title: Plugin Development
+description: Guide to developing I/O plugins for QLC+ to support new hardware and protocols
+---
+
+QLC+ uses a plugin architecture to support different DMX interfaces and protocols. Creating a plugin allows you to add support for new hardware devices or network protocols.
+
+## Plugin Architecture
+
+Plugins provide the interface between QLC+'s engine and physical hardware or network protocols. Each plugin implements the `QLCIOPlugin` interface.
+
+```mermaid
+graph LR
+    Engine[Engine] --> IOMap[Input/Output Map]
+    IOMap --> PluginCache[Plugin Cache]
+    PluginCache --> Plugin[Your Plugin]
+    Plugin --> Hardware[Hardware/Network]
+```
+
+## Plugin Interface
+
+All plugins must implement the `QLCIOPlugin` interface defined in `plugins/interfaces/qlcioplugin.h:90`.
+
+### Base Class
+
+```cpp
+class QLCIOPlugin : public QObject
+{
+    Q_OBJECT
+
+public:
+    virtual ~QLCIOPlugin() { }
+    
+    // Initialization
+    virtual void init() = 0;
+    virtual QString name() const = 0;
+    virtual int capabilities() const = 0;
+    virtual QString pluginInfo() const = 0;
+    
+    // I/O lines
+    virtual QStringList outputs() const = 0;
+    virtual QString outputInfo(quint32 output) = 0;
+    virtual QStringList inputs() const = 0;
+    virtual QString inputInfo(quint32 input) = 0;
+    
+    // Open/close
+    virtual bool openOutput(quint32 output, quint32 universe) = 0;
+    virtual void closeOutput(quint32 output, quint32 universe) = 0;
+    virtual bool openInput(quint32 input, quint32 universe) = 0;
+    virtual void closeInput(quint32 input, quint32 universe) = 0;
+    
+    // Data transfer
+    virtual void writeUniverse(quint32 universe, quint32 output,
+                               const QByteArray& data, bool dataChanged) = 0;
+    
+signals:
+    // Input signals
+    void valueChanged(quint32 universe, quint32 input,
+                     quint32 channel, uchar value);
+    void configurationChanged();
+};
+```
+
+### Plugin Capabilities
+
+Plugins declare their capabilities using bit flags (plugins/interfaces/qlcioplugin.h:127-134):
+
+```cpp
+enum Capability {
+    Output      = 1 << 0,  // DMX output support
+    Input       = 1 << 1,  // DMX input support
+    Feedback    = 1 << 2,  // Input feedback support
+    Infinite    = 1 << 3,  // Unlimited universes
+    RDM         = 1 << 4,  // RDM (Remote Device Management)
+    Beats       = 1 << 5   // Beat detection
+};
+```
+
+Example:
+```cpp
+int MyPlugin::capabilities() const
+{
+    return Output | Input | Infinite;
+}
+```
+
+## Creating a Plugin
+
+### Project Structure
+
+Create a new directory in `plugins/`:
+
+```
+plugins/myplugin/
+├── CMakeLists.txt
+├── myplugin.h
+├── myplugin.cpp
+└── test/
+    ├── CMakeLists.txt
+    ├── myplugin_test.h
+    ├── myplugin_test.cpp
+    └── test.sh
+```
+
+### CMakeLists.txt
+
+```cmake
+set(PLUGIN_NAME myplugin)
+
+set(SRC
+    myplugin.cpp
+    myplugin.h
+)
+
+add_library(${PLUGIN_NAME} SHARED ${SRC})
+
+target_link_libraries(${PLUGIN_NAME}
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Network  # If using network
+    qlcplusengine
+)
+
+install(TARGETS ${PLUGIN_NAME}
+    LIBRARY DESTINATION ${INSTALLROOT}/${PLUGINDIR}
+    RUNTIME DESTINATION ${INSTALLROOT}/${PLUGINDIR}
+)
+
+add_subdirectory(test)
+```
+
+### Plugin Header
+
+```cpp
+// myplugin.h
+#ifndef MYPLUGIN_H
+#define MYPLUGIN_H
+
+#include <QObject>
+#include <QMap>
+#include "qlcioplugin.h"
+
+class MyPlugin : public QLCIOPlugin
+{
+    Q_OBJECT
+    Q_INTERFACES(QLCIOPlugin)
+    Q_PLUGIN_METADATA(IID QLCIOPlugin_iid)
+
+public:
+    MyPlugin();
+    virtual ~MyPlugin();
+
+    // Initialization
+    void init() override;
+    QString name() const override;
+    int capabilities() const override;
+    QString pluginInfo() const override;
+
+    // Outputs
+    QStringList outputs() const override;
+    QString outputInfo(quint32 output) override;
+    bool openOutput(quint32 output, quint32 universe) override;
+    void closeOutput(quint32 output, quint32 universe) override;
+    void writeUniverse(quint32 universe, quint32 output,
+                      const QByteArray& data, bool dataChanged) override;
+
+    // Inputs
+    QStringList inputs() const override;
+    QString inputInfo(quint32 input) override;
+    bool openInput(quint32 input, quint32 universe) override;
+    void closeInput(quint32 input, quint32 universe) override;
+
+    // Configuration
+    void configure() override;
+    bool canConfigure() override;
+    QString setupWidgetClassName() const override;
+
+private:
+    // Your plugin's internal data
+    QMap<quint32, quint32> m_outputMap;  // output -> universe
+    QMap<quint32, quint32> m_inputMap;   // input -> universe
+};
+
+#endif // MYPLUGIN_H
+```
+
+### Plugin Implementation
+
+<Steps>
+  <Step title="Constructor and Destructor">
+    ```cpp
+    MyPlugin::MyPlugin()
+        : QLCIOPlugin()
+    {
+        // Initialize members
+    }
+
+    MyPlugin::~MyPlugin()
+    {
+        // Clean up resources
+    }
+    ```
+  </Step>
+
+  <Step title="Initialization">
+    ```cpp
+    void MyPlugin::init()
+    {
+        // Discover available devices/interfaces
+        // This is called once after the plugin is loaded
+    }
+
+    QString MyPlugin::name() const
+    {
+        return QString("My Plugin");
+    }
+
+    int MyPlugin::capabilities() const
+    {
+        return Output | Input | Infinite;
+    }
+
+    QString MyPlugin::pluginInfo() const
+    {
+        QString info;
+        info += QString("<HTML><BODY>");
+        info += QString("<H3>My Plugin</H3>");
+        info += QString("<P>Supports my custom hardware</P>");
+        info += QString("</BODY></HTML>");
+        return info;
+    }
+    ```
+  </Step>
+
+  <Step title="Output Management">
+    ```cpp
+    QStringList MyPlugin::outputs() const
+    {
+        QStringList list;
+        // Return list of available output lines
+        for (int i = 0; i < availableOutputCount(); i++)
+        {
+            list << QString("Output %1").arg(i + 1);
+        }
+        return list;
+    }
+
+    QString MyPlugin::outputInfo(quint32 output)
+    {
+        // Return human-readable description of this output
+        return QString("My Device Output %1").arg(output + 1);
+    }
+
+    bool MyPlugin::openOutput(quint32 output, quint32 universe)
+    {
+        // Open the specified output line for the given universe
+        if (output >= availableOutputCount())
+            return false;
+
+        m_outputMap[output] = universe;
+        
+        // Initialize hardware/connection
+        return initializeOutput(output);
+    }
+
+    void MyPlugin::closeOutput(quint32 output, quint32 universe)
+    {
+        Q_UNUSED(universe)
+        
+        // Close the output and release resources
+        m_outputMap.remove(output);
+        shutdownOutput(output);
+    }
+
+    void MyPlugin::writeUniverse(quint32 universe, quint32 output,
+                                 const QByteArray& data, bool dataChanged)
+    {
+        Q_UNUSED(dataChanged)
+        
+        // Send DMX data to hardware
+        if (!m_outputMap.contains(output))
+            return;
+            
+        if (m_outputMap[output] != universe)
+            return;
+        
+        // Transmit 'data' (512 bytes of DMX) to the hardware
+        transmitData(output, data);
+    }
+    ```
+  </Step>
+
+  <Step title="Input Management">
+    ```cpp
+    QStringList MyPlugin::inputs() const
+    {
+        QStringList list;
+        // Return list of available input lines
+        for (int i = 0; i < availableInputCount(); i++)
+        {
+            list << QString("Input %1").arg(i + 1);
+        }
+        return list;
+    }
+
+    QString MyPlugin::inputInfo(quint32 input)
+    {
+        return QString("My Device Input %1").arg(input + 1);
+    }
+
+    bool MyPlugin::openInput(quint32 input, quint32 universe)
+    {
+        if (input >= availableInputCount())
+            return false;
+
+        m_inputMap[input] = universe;
+        
+        // Start listening for input
+        return initializeInput(input);
+    }
+
+    void MyPlugin::closeInput(quint32 input, quint32 universe)
+    {
+        Q_UNUSED(universe)
+        
+        m_inputMap.remove(input);
+        shutdownInput(input);
+    }
+    ```
+  </Step>
+
+  <Step title="Input Notification">
+    ```cpp
+    // When input data is received, emit the signal
+    void MyPlugin::handleInputData(quint32 input, const QByteArray& data)
+    {
+        if (!m_inputMap.contains(input))
+            return;
+            
+        quint32 universe = m_inputMap[input];
+        
+        // Emit signal for each changed channel
+        for (int channel = 0; channel < data.size(); channel++)
+        {
+            uchar value = data[channel];
+            emit valueChanged(universe, input, channel, value);
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Network Protocol Example
+
+Example plugin for a network-based protocol:
+
+```cpp
+class NetworkPlugin : public QLCIOPlugin
+{
+    Q_OBJECT
+    Q_INTERFACES(QLCIOPlugin)
+    Q_PLUGIN_METADATA(IID QLCIOPlugin_iid)
+
+public:
+    NetworkPlugin() : m_socket(nullptr) {}
+    virtual ~NetworkPlugin() { delete m_socket; }
+
+    void init() override
+    {
+        // Create UDP socket
+        m_socket = new QUdpSocket(this);
+        connect(m_socket, &QUdpSocket::readyRead,
+                this, &NetworkPlugin::onDataReceived);
+    }
+
+    bool openOutput(quint32 output, quint32 universe) override
+    {
+        // Store output configuration
+        m_outputUniverse[output] = universe;
+        return true;
+    }
+
+    void writeUniverse(quint32 universe, quint32 output,
+                      const QByteArray& data, bool dataChanged) override
+    {
+        // Build protocol packet
+        QByteArray packet = buildPacket(universe, data);
+        
+        // Send via UDP
+        m_socket->writeDatagram(packet,
+                               QHostAddress::Broadcast,
+                               PROTOCOL_PORT);
+    }
+
+private slots:
+    void onDataReceived()
+    {
+        while (m_socket->hasPendingDatagrams())
+        {
+            QByteArray datagram;
+            datagram.resize(m_socket->pendingDatagramSize());
+            
+            m_socket->readDatagram(datagram.data(), datagram.size());
+            
+            // Parse packet and emit valueChanged()
+            parsePacket(datagram);
+        }
+    }
+
+private:
+    QUdpSocket* m_socket;
+    QMap<quint32, quint32> m_outputUniverse;
+};
+```
+
+## USB Device Example
+
+Example for USB DMX interface:
+
+```cpp
+class USBPlugin : public QLCIOPlugin
+{
+    Q_OBJECT
+    Q_INTERFACES(QLCIOPlugin)
+    Q_PLUGIN_METADATA(IID QLCIOPlugin_iid)
+
+public:
+    void init() override
+    {
+        // Enumerate USB devices
+        scanDevices();
+    }
+
+    void scanDevices()
+    {
+        // Use QSerialPortInfo or platform-specific APIs
+        #ifdef Q_OS_LINUX
+        // libusb or direct /dev access
+        #elif defined(Q_OS_WIN)
+        // Windows USB APIs
+        #elif defined(Q_OS_MACOS)
+        // IOKit
+        #endif
+    }
+
+    bool openOutput(quint32 output, quint32 universe) override
+    {
+        // Open USB device
+        if (output >= m_devices.size())
+            return false;
+            
+        return m_devices[output]->open();
+    }
+
+    void writeUniverse(quint32 universe, quint32 output,
+                      const QByteArray& data, bool dataChanged) override
+    {
+        if (output >= m_devices.size())
+            return;
+            
+        // Send DMX data via USB
+        m_devices[output]->sendDMX(data);
+    }
+
+private:
+    QVector<USBDevice*> m_devices;
+};
+```
+
+## Configuration UI
+
+Plugins can provide a configuration dialog:
+
+```cpp
+bool MyPlugin::canConfigure()
+{
+    return true;  // Plugin has configuration UI
+}
+
+void MyPlugin::configure()
+{
+    // Show configuration dialog
+    MyConfigDialog dialog;
+    dialog.exec();
+    
+    // Emit signal if configuration changed
+    emit configurationChanged();
+}
+
+QString MyPlugin::setupWidgetClassName() const
+{
+    // Return name of configuration widget class
+    // Used by QML UI
+    return QString("MyPluginConfig");
+}
+```
+
+## Custom Parameters
+
+Plugins can support custom parameters per universe:
+
+```cpp
+QVariant MyPlugin::getParameter(quint32 universe, quint32 line,
+                                Capability type, QString name)
+{
+    if (type == Output && name == "IPAddress")
+    {
+        return m_outputIPs.value(line);
+    }
+    return QVariant();
+}
+
+bool MyPlugin::setParameter(quint32 universe, quint32 line,
+                           Capability type, QString name, QVariant value)
+{
+    if (type == Output && name == "IPAddress")
+    {
+        m_outputIPs[line] = value.toString();
+        return true;
+    }
+    return false;
+}
+```
+
+## Testing Your Plugin
+
+### Unit Tests
+
+Create tests in `plugins/myplugin/test/`:
+
+```cpp
+// myplugin_test.cpp
+#include <QtTest>
+#include "myplugin.h"
+
+class MyPluginTest : public QObject
+{
+    Q_OBJECT
+
+private slots:
+    void initTestCase()
+    {
+        m_plugin = new MyPlugin();
+        m_plugin->init();
+    }
+
+    void cleanupTestCase()
+    {
+        delete m_plugin;
+    }
+
+    void testName()
+    {
+        QCOMPARE(m_plugin->name(), QString("My Plugin"));
+    }
+
+    void testCapabilities()
+    {
+        int caps = m_plugin->capabilities();
+        QVERIFY(caps & QLCIOPlugin::Output);
+        QVERIFY(caps & QLCIOPlugin::Input);
+    }
+
+    void testOutputs()
+    {
+        QStringList outputs = m_plugin->outputs();
+        QVERIFY(outputs.size() > 0);
+    }
+
+    void testOpenOutput()
+    {
+        bool result = m_plugin->openOutput(0, 0);
+        QVERIFY(result);
+        m_plugin->closeOutput(0, 0);
+    }
+
+private:
+    MyPlugin* m_plugin;
+};
+
+QTEST_MAIN(MyPluginTest)
+#include "myplugin_test.moc"
+```
+
+### Test Script
+
+```bash
+#!/bin/bash
+# test/test.sh
+
+export LD_LIBRARY_PATH=../../src:../../../engine/src
+./myplugin_test
+exit $?
+```
+
+## Integration with CMake
+
+Add your plugin to the main build:
+
+```cmake
+# plugins/CMakeLists.txt
+add_subdirectory(myplugin)
+```
+
+## Debugging
+
+### Enable Debug Output
+
+```cpp
+#include <QDebug>
+
+void MyPlugin::writeUniverse(...)
+{
+    qDebug() << "Writing universe" << universe
+             << "to output" << output
+             << "data size:" << data.size();
+}
+```
+
+### Run with Debug Symbols
+
+```bash
+cmake -DCMAKE_BUILD_TYPE=Debug ..
+make
+gdb ./main/qlcplus
+```
+
+## Platform Considerations
+
+### Linux
+
+- Use `libudev` for device detection
+- Use `libusb` for USB access
+- May need udev rules for device permissions
+
+### Windows
+
+- Use Windows USB APIs or libusb-win32
+- May need driver installation
+- Use `QSerialPort` for serial devices
+
+### macOS
+
+- Use IOKit for USB devices
+- Code signing may be required
+- Permissions for network access
+
+## Example Plugins
+
+Study these existing plugins for reference:
+
+<CardGroup cols={2}>
+  <Card title="Art-Net" icon="network-wired">
+    `plugins/artnet/` - Network protocol example
+  </Card>
+  
+  <Card title="E1.31" icon="network-wired">
+    `plugins/E1.31/` - UDP multicast protocol
+  </Card>
+  
+  <Card title="DMX USB" icon="usb">
+    `plugins/dmxusb/` - USB device handling
+  </Card>
+  
+  <Card title="MIDI" icon="music">
+    `plugins/midi/` - MIDI I/O
+  </Card>
+  
+  <Card title="Loopback" icon="arrows-rotate">
+    `plugins/loopback/` - Simple internal routing
+  </Card>
+  
+  <Card title="Dummy" icon="flask">
+    `plugins/dummy/` - Minimal plugin template
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Resource Management">
+    - Only open resources when `openOutput()` / `openInput()` is called
+    - Release resources in `closeOutput()` / `closeInput()`
+    - Don't leave connections open unnecessarily
+  </Accordion>
+
+  <Accordion title="Thread Safety">
+    - `writeUniverse()` is called from MasterTimer thread
+    - Use mutexes for shared data
+    - Emit signals across threads safely with Qt's connection types
+  </Accordion>
+
+  <Accordion title="Error Handling">
+    - Return `false` from `open*()` on failure
+    - Log errors with `qWarning()` or `qDebug()`
+    - Handle disconnections gracefully
+  </Accordion>
+
+  <Accordion title="Performance">
+    - `writeUniverse()` is called at high frequency (typically 50Hz)
+    - Minimize processing in write path
+    - Use efficient data structures
+    - Consider buffering if needed
+  </Accordion>
+</AccordionGroup>
+
+## Publishing Your Plugin
+
+<Steps>
+  <Step title="Test thoroughly">
+    - Unit tests pass
+    - Works with real hardware
+    - No memory leaks
+    - Cross-platform if possible
+  </Step>
+
+  <Step title="Document">
+    - Add README in plugin directory
+    - Document configuration
+    - List supported hardware
+    - Include troubleshooting tips
+  </Step>
+
+  <Step title="Submit pull request">
+    - Follow [Contributing Guidelines](/development/contributing)
+    - Include tests
+    - Update documentation
+  </Step>
+</Steps>
+
+## Resources
+
+- [Plugin Interface Header](https://github.com/mcallegari/qlcplus/blob/master/plugins/interfaces/qlcioplugin.h)
+- [Existing Plugins](https://github.com/mcallegari/qlcplus/tree/master/plugins)
+- [Architecture Overview](/development/architecture)
+- [Contributing Guidelines](/development/contributing)
+- [Development Forum](https://www.qlcplus.org/forum/viewforum.php?f=12)

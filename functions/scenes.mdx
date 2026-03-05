@@ -1,0 +1,204 @@
+---
+title: "Scenes"
+description: "Static lighting states that set specific values for fixture channels"
+---
+
+## Overview
+
+A Scene is the most fundamental function type in QLC+. It encapsulates the values of selected channels from one or more fixture instances. When a scene is started, the channels transition to their target values based on the fade in speed setting. For HTP (Highest Takes Precedence) channels, the fade out setting is used when the scene stops.
+
+## When to Use Scenes
+
+<CardGroup cols={2}>
+  <Card title="Static Lighting States" icon="lightbulb">
+    Create fixed lighting looks with specific colors, positions, and intensities
+  </Card>
+  <Card title="Building Blocks" icon="cube">
+    Use as steps in Chasers and Sequences for dynamic effects
+  </Card>
+  <Card title="Palette Application" icon="palette">
+    Apply palettes to fixture groups for consistent looks
+  </Card>
+  <Card title="Quick Preset Recall" icon="bolt">
+    Store and instantly recall complex lighting configurations
+  </Card>
+</CardGroup>
+
+## Creating a Scene
+
+Scenes can be created through the UI or programmatically. Each scene stores:
+
+- **Channel Values**: Specific DMX values for fixture channels
+- **Fixtures**: List of fixtures included in the scene
+- **Fixture Groups**: Groups of fixtures for organized control
+- **Channel Groups**: Grouped channels for coordinated adjustment
+- **Palettes**: References to color/position/beam palettes
+- **Speed Settings**: Fade in/out timings
+
+## Key Properties
+
+### Channel Values
+
+Scenes store channel values using the `SceneValue` structure:
+
+```cpp
+struct SceneValue {
+    quint32 fxi;      // Fixture ID
+    quint32 channel;  // Channel number
+    uchar value;      // DMX value (0-255)
+};
+```
+
+### Speed Control
+
+<ParamField path="fadeInSpeed" type="uint">
+  Time in milliseconds for channels to reach their target values (0 = instant)
+</ParamField>
+
+<ParamField path="fadeOutSpeed" type="uint">
+  Time in milliseconds for HTP channels to fade out when scene stops
+</ParamField>
+
+<ParamField path="duration" type="uint">
+  How long the scene holds its values before stopping (SingleShot mode)
+</ParamField>
+
+## Class Methods
+
+The Scene class (scene.h:55) provides these key methods:
+
+### Value Management
+
+```cpp
+// Set a channel value
+void setValue(quint32 fxi, quint32 ch, uchar value);
+
+// Get a channel value
+uchar value(quint32 fxi, quint32 ch);
+
+// Remove a channel value
+void unsetValue(quint32 fxi, quint32 ch);
+
+// Get all values
+QList<SceneValue> values() const;
+
+// Clear all values
+void clear();
+```
+
+### Fixture Management
+
+```cpp
+// Add a fixture to the scene
+void addFixture(quint32 fixtureId);
+
+// Remove a fixture
+bool removeFixture(quint32 fixtureId);
+
+// Get list of fixtures
+QList<quint32> fixtures() const;
+```
+
+### Channel Groups
+
+```cpp
+// Add a channel group
+void addChannelGroup(quint32 id);
+
+// Set channel group level
+void setChannelGroupLevel(quint32 id, uchar level);
+
+// Get channel groups
+QList<quint32> channelGroups();
+```
+
+### Color Extraction
+
+```cpp
+// Get RGB/CMY color from scene values
+QColor colorValue(quint32 fxi = Fixture::invalidId());
+```
+
+## Blend Modes
+
+Scenes support different blend modes for channel value mixing:
+
+- **Normal**: Standard HTP/LTP rules apply
+- **Mask**: Scene values mask underlying values
+- **Additive**: Values are added together
+- **Subtractive**: Values are subtracted
+
+```cpp
+void setBlendMode(Universe::BlendMode mode);
+quint32 blendFunctionID() const;
+void setBlendFunctionID(quint32 fid);
+```
+
+## Attributes
+
+Scenes have adjustable attributes:
+
+<ParamField path="Intensity" type="qreal">
+  Master intensity multiplier for all channels (0.0 - 1.0)
+</ParamField>
+
+<ParamField path="ParentIntensity" type="qreal">
+  Inherited intensity from parent function (0.0 - 1.0)
+</ParamField>
+
+## Flashing
+
+Scenes can be flashed for instant preview:
+
+```cpp
+// Flash the scene (override current output)
+void flash(MasterTimer *timer, bool shouldOverride, bool forceLTP);
+
+// Stop flashing
+void unFlash(MasterTimer *timer);
+```
+
+<Note>
+Flashing bypasses fade times and applies scene values immediately. The `forceLTP` parameter forces all channels to act as LTP, overriding HTP behavior.
+</Note>
+
+## XML Structure
+
+Scenes are saved with this structure:
+
+```xml
+<Function Type="Scene" ID="0" Name="Scene 1">
+  <Speed FadeIn="1000" FadeOut="1000" Duration="0"/>
+  <FixtureVal ID="0">0,255,1,180,2,128</FixtureVal>
+  <FixtureVal ID="1">0,255,1,64</FixtureVal>
+</Function>
+```
+
+Channel values are stored as comma-separated pairs: `channel,value,channel,value,...`
+
+## Best Practices
+
+<Steps>
+  <Step title="Organize with Fixture Groups">
+    Use fixture groups to manage multiple fixtures efficiently
+  </Step>
+  <Step title="Use Palettes">
+    Reference palettes instead of hardcoding values for easier updates
+  </Step>
+  <Step title="Set Appropriate Fade Times">
+    Match fade times to the fixture type (fast for LEDs, slower for moving heads)
+  </Step>
+  <Step title="Test HTP/LTP Behavior">
+    Verify that dimmer channels (HTP) and position channels (LTP) behave as expected
+  </Step>
+</Steps>
+
+<Warning>
+When a scene contains values set to zero, those channels will be hidden in the Scene. Only channels with non-zero values or channels that have been explicitly set are saved.
+</Warning>
+
+## See Also
+
+- [Chasers](/functions/chasers) - Use scenes as steps
+- [Sequences](/functions/sequences) - Animated scene playback
+- [Collections](/functions/collections) - Run multiple scenes simultaneously

@@ -1,0 +1,511 @@
+---
+title: "Video Functions"
+description: "Video and image playback for multimedia lighting shows"
+---
+
+## Overview
+
+Video functions enable playback of video files and static images within QLC+. Videos can be displayed on screens, projectors, or LED walls, synchronized with lighting effects for complete multimedia shows.
+
+<Note>
+Video functions are primarily used in the QML UI and support both video playback and static image display.
+</Note>
+
+## When to Use Video
+
+<CardGroup cols={2}>
+  <Card title="Multimedia Shows" icon="film">
+    Combine lighting with video content for immersive experiences
+  </Card>
+  <Card title="Visual Backdrops" icon="image">
+    Display static or animated backgrounds
+  </Card>
+  <Card title="Projection Mapping" icon="video-projector">
+    Control projector content in sync with lights
+  </Card>
+  <Card title="LED Wall Content" icon="tv">
+    Play videos on LED video walls
+  </Card>
+</CardGroup>
+
+## Supported Formats
+
+The Video class (video.h:36) supports various formats:
+
+### Video Formats
+
+```cpp
+static const QStringList m_defaultVideoCaps = 
+    QStringList() << "*.avi" << "*.wmv" << "*.mkv" 
+                  << "*.mp4" << "*.mov" << "*.mpg" 
+                  << "*.mpeg" << "*.flv" << "*.webm";
+```
+
+### Image Formats
+
+```cpp
+static const QStringList m_defaultPictureCaps = 
+    QStringList() << "*.png" << "*.bmp" << "*.jpg" 
+                  << "*.jpeg" << "*.gif";
+```
+
+<Note>
+Actual supported formats depend on the platform's media framework. Use `getVideoCapabilities()` to query available formats.
+</Note>
+
+## Key Properties
+
+The Video class provides extensive control:
+
+### Source Configuration
+
+<ParamField path="sourceUrl" type="QString">
+  Path to video/image file or URL. Can be local file or network stream.
+</ParamField>
+
+<ParamField path="isPicture" type="bool">
+  Automatically detected. True if source is a static image.
+</ParamField>
+
+### Display Properties
+
+<ParamField path="resolution" type="QSize">
+  Video resolution (width × height). Read from video metadata.
+</ParamField>
+
+<ParamField path="customGeometry" type="QRect">
+  Custom position and size: QRect(x, y, width, height). Leave null for default.
+</ParamField>
+
+<ParamField path="rotation" type="QVector3D">
+  3D rotation angles in degrees: QVector3D(xRot, yRot, zRot)
+</ParamField>
+
+<ParamField path="zIndex" type="int" default="1">
+  Layer order for multiple videos. Higher values appear on top.
+</ParamField>
+
+### Playback Configuration
+
+<ParamField path="screen" type="int" default="0">
+  Screen index for multi-monitor setups (0 = primary screen)
+</ParamField>
+
+<ParamField path="fullscreen" type="bool" default="false">
+  If true, video fills the entire screen
+</ParamField>
+
+## Class Methods
+
+### Source Management
+
+```cpp
+// Set video source
+bool setSourceUrl(QString filename);
+QString sourceUrl();
+
+// Check if source is a picture
+bool isPicture() const;
+```
+
+### Duration Control
+
+```cpp
+// Get/set video duration
+void setTotalDuration(quint32 duration);
+quint32 totalDuration();
+```
+
+For pictures, duration determines how long the image displays.
+
+### Display Configuration
+
+```cpp
+// Resolution
+QSize resolution();
+void setResolution(QSize size);
+
+// Custom geometry
+QRect customGeometry();
+void setCustomGeometry(QRect rect);
+
+// Rotation (3D transform)
+QVector3D rotation() const;
+void setRotation(QVector3D rotation);
+
+// Layer order
+int zIndex() const;
+void setZIndex(int idx);
+
+// Screen selection
+int screen();
+void setScreen(int index);
+
+// Fullscreen mode
+bool fullscreen();
+void setFullscreen(bool enable);
+```
+
+### Codec Information
+
+```cpp
+// Get codec information
+QString audioCodec();
+void setAudioCodec(QString codec);
+
+QString videoCodec();
+void setVideoCodec(QString codec);
+```
+
+## Attributes
+
+Video supports real-time adjustable attributes:
+
+```cpp
+enum VideoAttr {
+    Intensity = Function::Intensity,  // Brightness (0.0-1.0)
+    Volume,                           // Audio volume (0-100)
+    XRotation,                        // X-axis rotation (-360 to 360)
+    YRotation,                        // Y-axis rotation (-360 to 360)
+    ZRotation,                        // Z-axis rotation (-360 to 360)
+    XPosition,                        // X position offset (-100 to 100)
+    YPosition,                        // Y position offset (-100 to 100)
+    WidthScale,                       // Width scale (0-1000%)
+    HeightScale                       // Height scale (0-1000%)
+};
+
+// Adjust attribute
+int adjustAttribute(qreal fraction, int attributeId);
+
+// Get current intensity
+qreal intensity();
+```
+
+### Intensity Control
+
+Intensity affects both brightness and volume:
+
+```cpp
+int adjustAttribute(qreal fraction, int attributeId) {
+    switch (attributeId) {
+        case Intensity:
+            emit requestBrightnessVolumeAdjust(fraction);
+            emit intensityChanged();
+            break;
+    }
+}
+```
+
+## Playback Control
+
+### Signals for Playback
+
+```cpp
+signals:
+    void requestPlayback();                    // Start playing
+    void requestPause(bool enable);            // Pause/resume
+    void requestStop();                        // Stop playback
+    void requestBrightnessVolumeAdjust(qreal); // Adjust brightness/volume
+```
+
+These signals are connected to the video player backend.
+
+### Lifecycle Methods
+
+```cpp
+// Start video
+void preRun(MasterTimer* timer) {
+    emit requestPlayback();
+    Function::preRun(timer);
+}
+
+// Pause control
+void setPause(bool enable) {
+    emit requestPause(enable);
+    Function::setPause(enable);
+}
+
+// Stop video
+void postRun(MasterTimer* timer, QList<Universe*> universes) {
+    emit requestStop();
+    Function::postRun(timer, universes);
+}
+
+// Stop from UI (triggered by EndOfMedia)
+Q_INVOKABLE void stopFromUI() {
+    if (isRunning())
+        stop(FunctionParent::master());
+}
+```
+
+## XML Structure
+
+```xml
+<Function Type="Video" ID="60" Name="Intro Video">
+  <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+  <RunOrder>SingleShot</RunOrder>
+  <Source Screen="0" 
+          Fullscreen="1" 
+          Geometry="100,100,800,600"
+          Rotation="0,0,0"
+          ZIndex="1">
+    videos/intro.mp4
+  </Source>
+</Function>
+```
+
+### Geometry Format
+
+```
+Geometry="x,y,width,height"
+```
+
+### Rotation Format
+
+```
+Rotation="xDeg,yDeg,zDeg"
+```
+
+## Multi-Screen Setup
+
+For multiple displays:
+
+```cpp
+// Primary screen (default)
+video->setScreen(0);
+
+// Secondary screen
+video->setScreen(1);
+
+// Third screen
+video->setScreen(2);
+```
+
+<Note>
+Screen indices correspond to the system's display configuration. Use fullscreen for best results on secondary screens.
+</Note>
+
+## Custom Geometry
+
+Precise positioning and sizing:
+
+```cpp
+// Windowed mode with custom size/position
+QRect geometry(100, 100, 800, 600);  // x, y, width, height
+video->setCustomGeometry(geometry);
+video->setFullscreen(false);
+```
+
+## 3D Rotation
+
+Apply 3D transformations:
+
+```cpp
+// Rotate around Y-axis (spin)
+QVector3D rotation(0, 45, 0);  // 45° Y-rotation
+video->setRotation(rotation);
+
+// Combine rotations
+QVector3D rotation(15, 30, 0);  // Tilt and spin
+video->setRotation(rotation);
+```
+
+Rotation is applied in X-Y-Z order.
+
+## Layer Ordering
+
+Control video stacking:
+
+```cpp
+// Background video
+backgroundVideo->setZIndex(1);
+
+// Overlay video
+overlayVideo->setZIndex(10);
+
+// Top layer
+topVideo->setZIndex(100);
+```
+
+Higher z-index values appear on top.
+
+## Image Display
+
+Static images are handled identically:
+
+```cpp
+Video* image = new Video(doc);
+image->setSourceUrl("images/backdrop.png");
+image->setTotalDuration(30000);  // Show for 30 seconds
+image->setFullscreen(true);
+```
+
+<Note>
+For images, `totalDuration()` determines how long the image displays. For videos, it's read from the file.
+</Note>
+
+## Metadata Signals
+
+```cpp
+signals:
+    void sourceChanged(QString url);          // Source changed
+    void intensityChanged();                   // Intensity adjusted
+    void customGeometryChanged(QRect rect);   // Geometry changed
+    void rotationChanged(QVector3D rotation); // Rotation changed
+    void zIndexChanged(int index);            // Z-index changed
+    void totalTimeChanged(qint64);            // Duration changed
+    void metaDataChanged(QString key, QVariant data);  // Metadata updated
+```
+
+Connect to these for UI updates:
+
+```cpp
+connect(video, &Video::totalTimeChanged, 
+        this, &UI::updateDuration);
+
+connect(video, &Video::metaDataChanged,
+        this, &UI::updateMetadata);
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Use Appropriate Formats">
+    Prefer MP4 with H.264 for best compatibility
+  </Step>
+  <Step title="Test on Target Hardware">
+    Video playback performance varies by system
+  </Step>
+  <Step title="Optimize File Size">
+    Large videos can cause playback issues; compress appropriately
+  </Step>
+  <Step title="Set Correct Screen Index">
+    Verify screen indices match your display configuration
+  </Step>
+  <Step title="Use Fullscreen for Projectors">
+    Always use fullscreen mode for projector output
+  </Step>
+</Steps>
+
+## Common Use Cases
+
+### Projection Mapping
+
+```cpp
+Video* projection = new Video(doc);
+projection->setSourceUrl("mapping.mp4");
+projection->setScreen(1);  // Projector screen
+projection->setFullscreen(true);
+```
+
+### LED Wall Content
+
+```cpp
+Video* ledWall = new Video(doc);
+ledWall->setSourceUrl("content.mp4");
+ledWall->setCustomGeometry(QRect(0, 0, 1920, 1080));
+ledWall->setZIndex(1);
+```
+
+### Multi-Layer Video
+
+```cpp
+// Background
+Video* bg = new Video(doc);
+bg->setSourceUrl("background.mp4");
+bg->setZIndex(1);
+
+// Foreground overlay
+Video* fg = new Video(doc);
+fg->setSourceUrl("overlay.png");
+fg->setZIndex(10);
+fg->adjustAttribute(0.5, Video::Intensity);  // 50% opacity
+```
+
+## Performance Considerations
+
+- High-resolution videos (4K+) require powerful GPU
+- Multiple simultaneous videos multiply resource usage
+- Rotation and scaling add rendering overhead
+- Network streams may have latency issues
+
+<Warning>
+Playing multiple 1080p videos simultaneously requires significant system resources. Test on production hardware before show day.
+</Warning>
+
+## Platform Differences
+
+### Windows
+- Uses DirectShow or Media Foundation
+- Good codec support
+- Hardware acceleration available
+
+### macOS
+- Uses AVFoundation
+- Excellent codec support
+- Native hardware acceleration
+
+### Linux
+- Uses GStreamer
+- Codec support depends on installed plugins
+- Hardware acceleration varies by driver
+
+## Troubleshooting
+
+### Video Not Playing
+
+<Steps>
+  <Step>
+    Verify file format is supported: `Video::getVideoCapabilities()`
+  </Step>
+  <Step>
+    Check file path is correct (use absolute paths)
+  </Step>
+  <Step>
+    Test file in standalone player
+  </Step>
+  <Step>
+    Ensure required codecs are installed
+  </Step>
+  <Step>
+    Check system has sufficient resources
+  </Step>
+</Steps>
+
+### Performance Issues
+
+<Steps>
+  <Step>
+    Reduce video resolution
+  </Step>
+  <Step>
+    Disable unnecessary features (rotation, scaling)
+  </Step>
+  <Step>
+    Close other resource-intensive applications
+  </Step>
+  <Step>
+    Use hardware-accelerated codec (H.264)
+  </Step>
+  <Step>
+    Reduce number of simultaneous videos
+  </Step>
+</Steps>
+
+## Limitations
+
+<Warning>
+Video functions have these limitations:
+
+1. **UI-Only**: Video playback only works in QML UI, not headless mode
+2. **Platform-Dependent**: Codec support varies by operating system
+3. **Resource-Intensive**: Multiple videos require powerful hardware
+4. **No Streaming**: Limited support for network streams
+5. **No Effects**: No built-in video effects or filters
+</Warning>
+
+## See Also
+
+- [Audio](/functions/audio) - Audio playback integration
+- [Shows](/functions/shows) - Synchronize video with lighting
+- [RGB Matrix](/functions/rgb-matrix) - LED wall pixel control

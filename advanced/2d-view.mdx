@@ -1,0 +1,365 @@
+---
+title: 2D View
+description: 2D visualization and layout of fixtures on a virtual stage
+---
+
+The 2D View provides a top-down visualization of your fixture layout, allowing you to position fixtures, see their real-time output, and select fixtures spatially.
+
+## Overview
+
+The 2D View offers:
+- Visual fixture positioning on a grid
+- Real-time color and intensity preview
+- Spatial fixture selection
+- Custom background images
+- Multiple point-of-view perspectives
+- Grid scaling and measurement units
+
+## Grid System
+
+### Grid Configuration
+
+The 2D View uses a configurable grid system for fixture placement:
+
+```cpp
+// From mainview2d.h:95
+/** Get/Set the grid width/height */
+QSize gridSize() const;
+void setGridSize(QVector3D sz);
+
+/** Get/Set the grid position in pixels */
+QPoint gridPosition() const;
+void setGridPosition(QPoint pos);
+```
+
+### Grid Properties
+
+- **Grid Size**: Width and height in grid cells
+- **Grid Position**: X/Y offset in pixels for centering
+- **Grid Units**: Measurement units (meters, feet, etc.)
+- **Cell Pixels**: Size of each grid cell in pixels
+- **Grid Scale**: Temporary scaling factor for zoom
+
+```cpp
+// From mainview2d.h:149
+/** Size of the grid. How many horizontal and vertical cells */
+QSize m_gridSize;
+/** X/Y offset of the grid (in pixels) to keep it centered */
+QPoint m_gridPosition;
+/** Scale of the grid */
+qreal m_gridScale;
+/** Size of a grid cell in pixels */
+qreal m_cellPixels;
+```
+
+<Info>
+The grid system allows you to work in real-world dimensions. Set the grid units to match your venue measurements for accurate fixture placement.
+</Info>
+
+## Fixture Positioning
+
+### Creating Fixture Items
+
+Fixtures are added to the 2D view when created in the project:
+
+```cpp
+// From mainview2d.h:57
+void createFixtureItems(quint32 fxID, QVector3D pos, bool mmCoords = true);
+
+void createFixtureItem(quint32 fxID, quint16 headIndex, quint16 linkedIndex,
+                       QVector3D pos, bool mmCoords = true);
+```
+
+**Parameters**:
+- `fxID`: The fixture ID in the project
+- `pos`: 3D position (X, Y, Z coordinates)
+- `mmCoords`: If true, coordinates are in millimeters; otherwise in grid units
+- `headIndex`: For multi-head fixtures, which head this represents
+- `linkedIndex`: For linked fixtures
+
+### Position Updates
+
+Fixture positions can be updated dynamically:
+
+```cpp
+// From mainview2d.h:86
+/** Update the position of a Fixture with the provided $itemID */
+void updateFixturePosition(quint32 itemID, QVector3D pos);
+```
+
+<Steps>
+  <Step title="Select Fixture">
+    Click on a fixture in the 2D view to select it
+  </Step>
+  <Step title="Drag to Position">
+    Drag the fixture to its physical location on the grid
+  </Step>
+  <Step title="Fine-tune">
+    Use property panel for precise coordinate entry
+  </Step>
+  <Step title="Rotate">
+    Adjust fixture rotation to match physical orientation
+  </Step>
+</Steps>
+
+## Point of View
+
+The 2D View supports multiple viewing perspectives:
+
+```cpp
+// From mainview2d.h:115
+/** Get/Set the 2D grid point of view */
+int pointOfView() const;
+void setPointOfView(int pointOfView);
+```
+
+Available views:
+- **Top View**: Looking down from above (default)
+- **Front View**: Looking from the audience perspective
+- **Side View**: Looking from the side of the stage
+
+<Note>
+Changing the point of view updates how fixtures are displayed and positioned, but doesn't change their actual 3D coordinates.
+</Note>
+
+## Real-time Preview
+
+### Fixture Updates
+
+The 2D View updates in real-time as channels change:
+
+```cpp
+// From mainview2d.h:71
+/** Update the fixture preview items when some channels have changed */
+void updateFixture(Fixture *fixture, QByteArray &previous);
+
+/** Update a single fixture item for a specific Fixture ID, 
+    head index and linked index */
+void updateFixtureItem(Fixture *fixture, quint16 headIndex, 
+                      quint16 linkedIndex, QByteArray &previous);
+```
+
+The preview shows:
+- **Color**: RGB/CMY color mixing
+- **Intensity**: Dimmer value
+- **Position**: Pan/tilt for moving heads
+- **Beam**: Beam characteristics
+
+### Performance Optimization
+
+The 2D View uses QML components for rendering:
+
+```cpp
+// From mainview2d.h:161
+/** Pre-cached QML component for quick item creation */
+QQmlComponent *fixtureComponent;
+```
+
+This caching ensures smooth performance even with many fixtures.
+
+## Selection Tools
+
+### Single Selection
+
+Click on a fixture to select it:
+
+```cpp
+// From mainview2d.h:69
+/** Return the ID of a Fixture at the given $pos or -1 if not found */
+Q_INVOKABLE int itemIDAtPos(QPointF pos);
+```
+
+### Rectangle Selection
+
+Drag to select multiple fixtures:
+
+```cpp
+// From mainview2d.h:66
+/** Select some Fixtures included in the provided $rect area */
+QList<quint32> selectFixturesRect(QRectF rect);
+```
+
+### Selection Updates
+
+```cpp
+// From mainview2d.h:77
+/** Update the selection status of a list of Fixture item IDs */
+void updateFixtureSelection(QList<quint32>fixtures);
+
+/** Update the selection status of a Fixture with the provided $itemID */
+void updateFixtureSelection(quint32 itemID, bool enable);
+```
+
+<Info>
+Selected fixtures in the 2D View are automatically synchronized with other views and the Fixture Manager.
+</Info>
+
+## Background Images
+
+### Setting Background
+
+Add a stage plot or venue layout as background:
+
+```cpp
+// From mainview2d.h:118
+/** Get/Set the main background image */
+QString backgroundImage();
+void setBackgroundImage(QString path);
+```
+
+Supported formats:
+- PNG
+- JPEG
+- SVG (scalable)
+- BMP
+
+<Steps>
+  <Step title="Prepare Image">
+    Create or obtain a stage layout image file
+  </Step>
+  <Step title="Load Image">
+    Use the background image selector
+  </Step>
+  <Step title="Scale Grid">
+    Adjust grid scale to match image dimensions
+  </Step>
+  <Step title="Position Fixtures">
+    Place fixtures over their physical locations
+  </Step>
+</Steps>
+
+## Fixture Properties
+
+### Rotation
+
+Adjust fixture rotation in the 2D plane:
+
+```cpp
+// From mainview2d.h:83
+/** Update the rotation of a Fixture with the provided $itemID */
+void updateFixtureRotation(quint32 itemID, QVector3D degrees);
+```
+
+### Size
+
+Update visual fixture size:
+
+```cpp
+// From mainview2d.h:89
+/** Update the size of a Fixture with the provided $itemID */
+void updateFixtureSize(quint32 itemID, Fixture *fixture);
+```
+
+### Flags
+
+Set various fixture display flags:
+
+```cpp
+// From mainview2d.h:62
+/** Set/update the flags of a fixture item */
+void setFixtureFlags(quint32 itemID, quint32 flags);
+```
+
+Flags control:
+- Selection highlighting
+- Visibility
+- Label display
+- Active state
+
+## Integration
+
+### Universe Filtering
+
+Filter view by universe:
+
+```cpp
+// From mainview2d.h:52
+/** @reimp */
+void setUniverseFilter(quint32 universeFilter) override;
+```
+
+This shows only fixtures belonging to the selected universe.
+
+### Monitor Properties
+
+The 2D View uses the document's monitor properties:
+
+```cpp
+// From mainview2d.h:146
+/** Reference to the Doc Monitor properties */
+MonitorProperties *m_monProps;
+```
+
+These properties are saved with the project and include:
+- Grid configuration
+- Fixture positions
+- Background image
+- View settings
+
+## Context Management
+
+### Enable/Disable
+
+```cpp
+// From mainview2d.h:50
+/** @reimp */
+void enableContext(bool enable) override;
+```
+
+Enabling the context:
+- Loads fixture items
+- Starts real-time updates
+- Prepares rendering
+
+Disabling the context:
+- Pauses updates
+- Saves current state
+- Releases resources
+
+### Refresh View
+
+```cpp
+// From mainview2d.h:140
+/** @reimp */
+void slotRefreshView() override;
+```
+
+Manual refresh:
+- Recreates all fixture items
+- Updates positions and states
+- Reapplies settings
+
+## Best Practices
+
+- **Scale Appropriately**: Match grid scale to your venue dimensions
+- **Use Background**: Load a stage plot for accurate positioning
+- **Organize by Universe**: Use universe filtering for complex setups
+- **Selection Efficiency**: Use rectangle selection for multiple fixtures
+- **Real-time Feedback**: Watch the 2D View while programming for immediate visual feedback
+- **Document Layout**: Save screenshots of your 2D layout for documentation
+
+## Technical Details
+
+### Grid Item Reference
+
+```cpp
+// From mainview2d.h:143
+/** References to the 2D grid item for positioning */
+QQuickItem *m_gridItem;
+```
+
+The grid item is the QML component that handles:
+- Grid line rendering
+- Coordinate transformations
+- Mouse event handling
+
+### Coordinate System
+
+The 2D View uses a 3D coordinate system:
+- **X**: Horizontal position (left/right)
+- **Y**: Vertical position (up/down or front/back depending on view)
+- **Z**: Depth (typically height from ground)
+
+Coordinates can be specified in:
+- **Millimeters**: Absolute real-world measurements
+- **Grid Units**: Relative to grid cell size

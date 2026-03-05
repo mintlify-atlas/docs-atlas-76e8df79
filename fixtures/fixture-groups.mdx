@@ -1,0 +1,431 @@
+---
+title: Fixture Groups
+description: Create and manage fixture groups for bulk control and organized layout of multiple fixtures
+---
+
+## Overview
+
+Fixture Groups allow you to organize multiple fixtures (or fixture heads) into logical collections for easier control and programming. Groups are particularly useful for creating matrix effects, controlling multiple fixtures as a single unit, and organizing fixtures by physical location or function.
+
+## Understanding Fixture Groups
+
+A Fixture Group represents a collection of fixture heads arranged in a grid pattern:
+
+```cpp
+// From fixturegroup.h:43-98
+class FixtureGroup final : public QObject
+{
+    Q_PROPERTY(quint32 id READ id CONSTANT)
+    Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged)
+    
+    // Each group has:
+    quint32 id() const;           // Unique group ID
+    QString name() const;          // Group name
+    QSize size() const;            // Grid dimensions (width x height)
+    QMap<QLCPoint,GroupHead> headsMap() const;  // Head positions
+};
+```
+
+### Key Concepts
+
+- **Group ID**: A unique identifier for the group (similar to fixture IDs)
+- **Grid Layout**: Groups arrange fixtures in a 2D grid with width and height
+- **Group Heads**: Individual fixture heads positioned at specific grid coordinates
+- **QLCPoint**: A point in the grid with X and Y coordinates (zero-based)
+
+## Creating Fixture Groups
+
+<Steps>
+  <Step title="Open Fixture Group Editor">
+    Access the Fixture Group editor from the main QLC+ interface.
+  </Step>
+
+  <Step title="Create New Group">
+    Click to create a new fixture group. The group is assigned a unique ID automatically.
+  </Step>
+
+  <Step title="Name the Group">
+    Give your group a descriptive name:
+    
+    ```cpp
+    // From fixturegroup.cpp:89-97
+    void FixtureGroup::setName(const QString& name)
+    {
+        if (m_name == name)
+            return;
+        m_name = name;
+        emit nameChanged();
+        emit changed(this->id());
+    }
+    ```
+    
+    Examples: "Front Wash", "LED Matrix", "Stage Bars"
+  </Step>
+
+  <Step title="Set Grid Size">
+    Define the dimensions of your group's grid layout:
+    - **Width**: Number of columns
+    - **Height**: Number of rows
+    
+    The grid size determines how fixtures are arranged for matrix effects.
+  </Step>
+
+  <Step title="Add Fixtures">
+    Assign fixtures to grid positions (explained in detail below).
+  </Step>
+</Steps>
+
+## Adding Fixtures to Groups
+
+### Automatic Assignment
+
+The simplest way to add a fixture to a group:
+
+```cpp
+// From fixturegroup.cpp:108-137
+bool FixtureGroup::assignFixture(quint32 id, const QLCPoint& pt)
+{
+    Fixture* fxi = doc()->fixture(id);
+    int headAddedcount = 0;
+    
+    for (int i = 0; i < fxi->heads(); i++)
+    {
+        if (pt.isNull())
+        {
+            // Automatically find next free position
+            if (assignHead(pt, GroupHead(fxi->id(), i)) == true)
+                headAddedcount++;
+        }
+        else
+        {
+            // Place at specific position
+            if (assignHead(tmp, GroupHead(fxi->id(), i)) == true)
+                headAddedcount++;
+            tmp.setX(tmp.x() + 1);  // Move to next column
+        }
+    }
+    return headAddedcount ? true : false;
+}
+```
+
+<Accordion title="Automatic Placement">
+  When you add a fixture without specifying a position:
+  1. QLC+ finds the next available grid position
+  2. Each head of the fixture is placed sequentially
+  3. Positions fill left-to-right, top-to-bottom
+  4. Grid automatically expands if needed
+</Accordion>
+
+### Manual Head Assignment
+
+For precise control, assign individual heads to specific positions:
+
+```cpp
+// From fixturegroup.cpp:139-180
+bool FixtureGroup::assignHead(const QLCPoint& pt, const GroupHead& head)
+{
+    if (m_heads.values().contains(head) == true)
+        return false;  // Head already in group
+    
+    if (size().isValid() == false)
+        setSize(QSize(1, 1));  // Initialize grid
+    
+    if (pt.isNull() == false)
+    {
+        m_heads[pt] = head;  // Direct assignment
+    }
+    else
+    {
+        // Find next free position
+        for (int y = 0; y < ymax; y++)
+        {
+            for (int x = 0; x < xmax; x++)
+            {
+                QLCPoint tmp(x, y);
+                if (m_heads.contains(tmp) == false)
+                {
+                    m_heads[tmp] = head;
+                    return true;
+                }
+            }
+        }
+    }
+    return true;
+}
+```
+
+## Group Layout and Positioning
+
+### Grid Coordinates
+
+Positions in the grid use `QLCPoint` with zero-based coordinates:
+
+- **X coordinate**: Column number (0 = leftmost)
+- **Y coordinate**: Row number (0 = topmost)
+
+### Example: 4x2 LED Bar Array
+
+```
+Grid Size: 4 columns × 2 rows
+
+(0,0)  (1,0)  (2,0)  (3,0)
+  ║      ║      ║      ║
+ Bar1   Bar2   Bar3   Bar4
+
+(0,1)  (1,1)  (2,1)  (3,1)
+  ║      ║      ║      ║
+ Bar5   Bar6   Bar7   Bar8
+```
+
+### Multi-Head Fixtures in Groups
+
+For fixtures with multiple heads (e.g., LED bars with individual segments):
+
+```cpp
+// Each head is represented by GroupHead
+struct GroupHead {
+    quint32 fxi;  // Fixture ID
+    int head;     // Head index within fixture
+};
+```
+
+A 4-segment LED bar adds 4 heads to the group:
+- Head 0 → Position (0,0)
+- Head 1 → Position (1,0)
+- Head 2 → Position (2,0)
+- Head 3 → Position (3,0)
+
+## Managing Group Contents
+
+### Removing Fixtures
+
+Remove all heads from a specific fixture:
+
+```cpp
+// From fixturegroup.cpp:182-194
+void FixtureGroup::resignFixture(quint32 id)
+{
+    QMap<QLCPoint,GroupHead>::iterator it = m_heads.begin();
+    while(it != m_heads.end())
+    {
+        if (it.value().fxi == id)
+            it = m_heads.erase(it);  // Remove this head
+        else
+            it++;
+    }
+    emit changed(this->id());
+}
+```
+
+### Removing Individual Heads
+
+```cpp
+// From fixturegroup.cpp:196-200
+bool FixtureGroup::resignHead(const QLCPoint& pt)
+{
+    const int removed = m_heads.remove(pt);
+    if (removed)
+        emit changed(this->id());
+    return removed > 0;
+}
+```
+
+### Swapping Positions
+
+Exchange two fixture heads in the grid:
+
+```cpp
+void swap(const QLCPoint& a, const QLCPoint& b);
+```
+
+Useful for:
+- Correcting physical layout mismatches
+- Adjusting fixture order for effects
+- Reorganizing without removing and re-adding
+
+### Resetting Groups
+
+```cpp
+void reset();  // Clear all heads but preserve grid size
+```
+
+## Querying Group Information
+
+### Get All Heads
+
+```cpp
+// From fixturegroup.h:164-171
+QList<GroupHead> headList() const;           // All heads as list
+QMap<QLCPoint,GroupHead> headsMap() const;   // Heads with positions
+```
+
+### Get Specific Head
+
+```cpp
+// From fixturegroup.h:156-162
+GroupHead head(const QLCPoint& pt) const;
+```
+
+Returns the head at a specific grid position, or an invalid `GroupHead` if the position is empty.
+
+### Get Fixture List
+
+```cpp
+QList<quint32> fixtureList() const;  // Unique fixture IDs in group
+```
+
+## Using Fixture Groups
+
+### In Functions
+
+Fixture groups enable powerful effects:
+
+- **Matrix Effects**: Create animations across the group grid
+- **Color Waves**: Sweep colors across fixtures
+- **Position Effects**: For groups with moving heads
+- **Pixel Mapping**: Map videos or images onto LED fixtures
+
+### In EFX
+
+Groups can be targeted by effects for synchronized control:
+- All fixtures in a group respond to the same EFX
+- Individual head control within the group
+- Grid-based pattern generation
+
+## Practical Examples
+
+### Example 1: Simple LED Bar Group
+
+<Steps>
+  <Step title="Add 4 LED Bars">
+    Fixtures with IDs 1-4, each with a single head.
+  </Step>
+
+  <Step title="Create Group">
+    Name: "Front LED Bars", Size: 4×1
+  </Step>
+
+  <Step title="Add Fixtures">
+    - Fixture 1 → (0,0)
+    - Fixture 2 → (1,0)
+    - Fixture 3 → (2,0)
+    - Fixture 4 → (3,0)
+  </Step>
+</Steps>
+
+### Example 2: LED Matrix
+
+<Steps>
+  <Step title="Physical Layout">
+    8 LED bars, 4 segments each = 32 individual heads
+  </Step>
+
+  <Step title="Create Group">
+    Name: "LED Matrix", Size: 4×8 (4 segments wide, 8 bars tall)
+  </Step>
+
+  <Step title="Assign Bars">
+    Each 4-segment bar occupies one row:
+    - Bar 1: heads at (0-3, 0)
+    - Bar 2: heads at (0-3, 1)
+    - Bar 3: heads at (0-3, 2)
+    - And so on...
+  </Step>
+</Steps>
+
+### Example 3: Moving Head Grid
+
+<Steps>
+  <Step title="Add Moving Heads">
+    12 moving heads in a 3×4 arrangement over the stage.
+  </Step>
+
+  <Step title="Create Group">
+    Name: "Overhead Movers", Size: 3×4
+  </Step>
+
+  <Step title="Position Mapping">
+    Arrange to match physical layout:
+    ```
+    Stage View (looking from audience):
+    
+    [MH1]  [MH2]  [MH3]
+    [MH4]  [MH5]  [MH6]
+    [MH7]  [MH8]  [MH9]
+    [MH10] [MH11] [MH12]
+    ```
+    
+    Map to grid positions accordingly.
+  </Step>
+</Steps>
+
+## Fixture Group Persistence
+
+Groups are saved with your project:
+
+```cpp
+// From fixturegroup.h:193-199
+static bool loader(QXmlStreamReader &xmlDoc, Doc* doc);
+bool loadXML(QXmlStreamReader &xmlDoc);
+bool saveXML(QXmlStreamWriter *doc);
+```
+
+The XML stores:
+- Group ID and name
+- Grid size
+- All head assignments with positions
+
+## Best Practices
+
+<Accordion title="Grid Size Planning">
+  - Match the grid to your physical fixture layout
+  - Consider the aspect ratio for video mapping
+  - Leave room for expansion if you might add more fixtures
+  - For linear arrangements (single row/column), use 1 for the other dimension
+</Accordion>
+
+<Accordion title="Naming Groups">
+  - Use descriptive names: "Stage Wash", "DJ Booth LEDs"
+  - Include location information: "Upstage Matrix", "Front Truss"
+  - Reference fixture types: "Moving Head Grid", "Par Array"
+</Accordion>
+
+<Accordion title="Layout Mapping">
+  - Map the group grid to match physical reality
+  - Top-left of grid = top-left of physical setup
+  - Test with a simple effect to verify correct mapping
+  - Document your layout with diagrams
+</Accordion>
+
+<Accordion title="Multi-Head Fixtures">
+  - Understand which fixtures have multiple heads
+  - Account for all heads when planning grid size
+  - Consider head order within multi-head fixtures
+  - Test individual head control after assignment
+</Accordion>
+
+## Troubleshooting
+
+### Group Effects Not Working
+
+- Verify all fixtures in the group are properly addressed
+- Check that fixture heads are assigned to correct grid positions
+- Ensure the group grid size matches your physical layout
+
+### Missing Fixtures in Group
+
+- Fixtures removed from the project are automatically removed from groups
+- The `slotFixtureRemoved()` signal handles this automatically
+- Check the fixture manager to ensure fixtures still exist
+
+### Incorrect Effect Direction
+
+- Verify grid orientation matches physical layout
+- Swap fixture positions if needed
+- Test with a simple color sweep to check mapping
+
+## Next Steps
+
+- Learn about [Adding Fixtures](/fixtures/adding-fixtures) to your project
+- Explore [Channel Modifiers](/fixtures/channel-modifiers) for advanced control
+- Create custom fixture definitions in the [Fixture Editor](/fixtures/fixture-editor)

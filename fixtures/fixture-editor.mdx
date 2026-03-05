@@ -1,0 +1,507 @@
+---
+title: Fixture Editor
+description: Create and edit custom fixture definitions for devices not included in the QLC+ library
+---
+
+## Overview
+
+The Fixture Editor allows you to create custom fixture definitions for lighting equipment that isn't included in QLC+'s built-in library. A fixture definition describes the DMX channel layout, capabilities, and physical properties of a lighting fixture.
+
+## Fixture Definition Structure
+
+A fixture definition consists of several key components:
+
+```cpp
+// From qlcfixturedef.h:54-72
+/**
+ * QLCFixtureDef represents exactly one fixture, identified by its manufacturer
+ * and model names. Each fixture definition has also a type that describes
+ * roughly the fixture's purpose (moving head, scanner, flower etc).
+ *
+ * A QLCFixtureDef houses all of its QLCChannel entries in a non-ordered pool.
+ * Each QLCFixtureMode picks their channels from this channel pool and arranges
+ * them in such an order that represents each mode (channel and physical
+ * configuration) of the fixture.
+ */
+class QLCFixtureDef final
+{
+    QString m_manufacturer;    // Fixture manufacturer
+    QString m_model;          // Fixture model name
+    FixtureType m_type;       // Fixture category
+    QList<QLCChannel*> m_channels;     // Channel pool
+    QList<QLCFixtureMode*> m_modes;    // Available modes
+    QLCPhysical m_physical;            // Physical properties
+};
+```
+
+## Creating a New Fixture Definition
+
+<Steps>
+  <Step title="Open Fixture Editor">
+    Launch the Fixture Editor from the QLC+ Tools menu.
+  </Step>
+
+  <Step title="Create New Fixture">
+    Start a new fixture definition and set basic information:
+    - **Manufacturer**: Company name (e.g., "Martin", "Chauvet")
+    - **Model**: Fixture model number (e.g., "MAC 250", "Intimidator Spot 360")
+    - **Type**: Fixture category
+  </Step>
+
+  <Step title="Add Channels">
+    Create the channel pool with all possible channels the fixture uses.
+  </Step>
+
+  <Step title="Define Modes">
+    Create one or more modes that select and arrange channels from the pool.
+  </Step>
+
+  <Step title="Set Physical Properties">
+    Add physical specifications like weight, dimensions, and power consumption.
+  </Step>
+
+  <Step title="Save Definition">
+    Save your fixture definition as a `.qxf` file.
+  </Step>
+</Steps>
+
+## Fixture Types
+
+Select the appropriate type for your fixture:
+
+```cpp
+// From qlcfixturedef.h:92-109
+enum FixtureType
+{
+    ColorChanger = 0,  // RGB/CMY color mixing
+    Dimmer,           // Simple dimmer channels
+    Effect,           // Special effect devices
+    Fan,              // Fans for fog effects
+    Flower,           // Rotating flower effects
+    Hazer,            // Haze machines
+    Laser,            // Laser projectors
+    LEDBarBeams,      // LED bars (beam style)
+    LEDBarPixels,     // LED bars (pixel control)
+    MovingHead,       // Pan/tilt moving heads
+    Other,            // Miscellaneous
+    Scanner,          // Mirror scanners
+    Smoke,            // Smoke machines
+    Strobe            // Strobe lights
+};
+```
+
+<Note>
+The fixture type helps QLC+ categorize your fixture and may influence available features. Choose the most specific type that matches your fixture.
+</Note>
+
+## Defining Channels
+
+### Channel Pool
+
+The channel pool contains all possible channels the fixture can use:
+
+```cpp
+// From qlcfixturedef.h:170-191
+bool addChannel(QLCChannel* channel);
+bool removeChannel(QLCChannel* channel);
+QLCChannel* channel(const QString& name);
+QList<QLCChannel*> channels() const;
+```
+
+<Accordion title="Channel Pool Concept">
+  The channel pool is NOT the actual channel order. It's a collection of all channels that any mode might use. Each mode then picks channels from this pool and arranges them in a specific order.
+  
+  This allows multiple modes to share channel definitions without duplication.
+</Accordion>
+
+### Creating a Channel
+
+Each channel needs:
+
+1. **Name**: Descriptive name (e.g., "Pan", "Red", "Gobo")
+2. **Group**: Channel function category
+3. **Capabilities**: DMX value ranges and their meanings
+
+#### Channel Groups
+
+From the QLC+ source, channels are organized into groups:
+
+- **Intensity**: Dimmer and master intensity
+- **Colour**: Color channels (RGB, CMY, color wheels)
+- **Gobo**: Gobo wheel and rotation
+- **Shutter**: Shutter and strobe
+- **Speed**: Effect speed control
+- **Prism**: Prism effects
+- **Beam**: Zoom, focus, iris
+- **Pan**: Horizontal movement
+- **Tilt**: Vertical movement
+- **Effect**: Special effects
+- **Maintenance**: Lamp control, reset, etc.
+
+### Channel Capabilities
+
+Capabilities define what happens at different DMX values:
+
+```xml
+<!-- From ADB-ALC4.qxf example -->
+<Channel Name="CT Preset">
+  <Group Byte="0">Colour</Group>
+  <Capability Min="0" Max="76">RGB Mode</Capability>
+  <Capability Min="77" Max="101">White 2700K</Capability>
+  <Capability Min="102" Max="127">White 3000K</Capability>
+  <Capability Min="128" Max="152">White 3200K</Capability>
+  <Capability Min="153" Max="178">White 4200K</Capability>
+  <Capability Min="179" Max="203">White 5600K</Capability>
+  <Capability Min="204" Max="229">White 6000K</Capability>
+  <Capability Min="230" Max="255">White 6500K</Capability>
+</Channel>
+```
+
+<Steps>
+  <Step title="Define Value Range">
+    Set the Min and Max DMX values for each capability (0-255).
+  </Step>
+
+  <Step title="Describe Function">
+    Write a clear description of what happens in this range.
+  </Step>
+
+  <Step title="Avoid Gaps">
+    Ensure capabilities cover all values from 0-255 with no gaps or overlaps.
+  </Step>
+</Steps>
+
+### Channel Presets
+
+QLC+ provides presets for common channels:
+
+```xml
+<Channel Name="Master Dimmer" Preset="IntensityMasterDimmer"/>
+<Channel Name="Red" Preset="IntensityRed"/>
+<Channel Name="Green" Preset="IntensityGreen"/>
+<Channel Name="Blue" Preset="IntensityBlue"/>
+```
+
+Presets automatically define:
+- Channel group
+- Primary color (for color channels)
+- Standard capabilities (0-255 = 0-100%)
+
+## Creating Fixture Modes
+
+### Mode Structure
+
+```cpp
+// From qlcfixturedef.h:196-212
+bool addMode(QLCFixtureMode* mode);
+bool removeMode(QLCFixtureMode* mode);
+QLCFixtureMode* mode(const QString& name);
+QList<QLCFixtureMode*> modes();
+```
+
+Each mode defines:
+- **Mode Name**: Descriptive name matching fixture documentation
+- **Channel List**: Ordered list of channels from the pool
+- **Physical Properties**: Mode-specific physical settings (if different)
+
+### Example: Simple RGB Fixture
+
+```xml
+<!-- 3-channel mode -->
+<Mode Name="3 Channel RGB">
+  <Channel Number="0">Red</Channel>
+  <Channel Number="1">Green</Channel>
+  <Channel Number="2">Blue</Channel>
+</Mode>
+
+<!-- 4-channel mode with dimmer -->
+<Mode Name="4 Channel RGBD">
+  <Channel Number="0">Master Dimmer</Channel>
+  <Channel Number="1">Red</Channel>
+  <Channel Number="2">Green</Channel>
+  <Channel Number="3">Blue</Channel>
+</Mode>
+```
+
+<Note>
+Channel numbers in modes start at 0 (DMX channel 1). The order must exactly match the fixture's DMX protocol as documented by the manufacturer.
+</Note>
+
+### Multi-Head Modes
+
+For fixtures with multiple independent heads:
+
+```xml
+<!-- From ADB-ALC4.qxf: 4-head LED fixture -->
+<Mode Name="Matrix 20 Channels (CT 7 Preset)">
+  <Channel Number="0">Dimmer 1</Channel>
+  <Channel Number="1">CT Preset 1</Channel>
+  <Channel Number="2">Red 1</Channel>
+  <Channel Number="3">Green 1</Channel>
+  <Channel Number="4">Blue 1</Channel>
+  <!-- Channels 5-9: Head 2 -->
+  <!-- Channels 10-14: Head 3 -->
+  <!-- Channels 15-19: Head 4 -->
+  
+  <Head>
+    <Channel>4</Channel>
+    <Channel>2</Channel>
+    <Channel>3</Channel>
+    <Channel>0</Channel>
+    <Channel>1</Channel>
+  </Head>
+  <Head>
+    <Channel>9</Channel>
+    <Channel>6</Channel>
+    <Channel>7</Channel>
+    <Channel>5</Channel>
+    <Channel>8</Channel>
+  </Head>
+  <!-- Additional heads... -->
+</Mode>
+```
+
+Head definitions:
+- List channels belonging to each physical head
+- Enable independent head control
+- Support fixture groups with multi-head fixtures
+
+## Physical Properties
+
+Define the fixture's physical characteristics:
+
+```xml
+<Physical>
+  <Bulb Type="LED" Lumens="0" ColourTemperature="0"/>
+  <Dimensions Weight="10" Width="603" Height="380" Depth="495"/>
+  <Lens Name="" DegreesMin="0" DegreesMax="0"/>
+  <Focus Type="Fixed" PanMax="0" TiltMax="0"/>
+  <Layout Width="4" Height="1"/>
+  <Technical PowerConsumption="200" DmxConnector="5-pin"/>
+</Physical>
+```
+
+### Physical Properties Explained
+
+<Accordion title="Bulb Information">
+  - **Type**: LED, Discharge, Halogen, etc.
+  - **Lumens**: Light output in lumens
+  - **ColourTemperature**: In Kelvin (e.g., 6500 for daylight)
+</Accordion>
+
+<Accordion title="Dimensions">
+  - **Weight**: In kilograms
+  - **Width/Height/Depth**: In millimeters
+</Accordion>
+
+<Accordion title="Lens Properties">
+  - **Name**: Lens type if applicable
+  - **DegreesMin/Max**: Beam angle range (for zoom fixtures)
+</Accordion>
+
+<Accordion title="Focus Capabilities">
+  - **Type**: Fixed, Head (moving head), Mirror (scanner)
+  - **PanMax/TiltMax**: Maximum movement in degrees
+</Accordion>
+
+<Accordion title="Layout">
+  - **Width/Height**: For multi-head fixtures, the grid arrangement
+  - Example: 4×1 means 4 heads in a row
+</Accordion>
+
+<Accordion title="Technical Specs">
+  - **PowerConsumption**: Watts
+  - **DmxConnector**: 3-pin, 5-pin, or both
+</Accordion>
+
+## XML File Format
+
+Fixture definitions are saved as `.qxf` files (XML format):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE FixtureDefinition>
+<FixtureDefinition xmlns="http://www.qlcplus.org/FixtureDefinition">
+  <Creator>
+    <Name>Q Light Controller Plus</Name>
+    <Version>4.12.1 GIT</Version>
+    <Author>Your Name</Author>
+  </Creator>
+  <Manufacturer>Manufacturer Name</Manufacturer>
+  <Model>Model Name</Model>
+  <Type>Fixture Type</Type>
+  
+  <!-- Channel definitions -->
+  <Channel Name="...">
+    <!-- Channel properties -->
+  </Channel>
+  
+  <!-- Mode definitions -->
+  <Mode Name="...">
+    <!-- Channel assignments -->
+  </Mode>
+  
+  <!-- Physical properties -->
+  <Physical>
+    <!-- Physical specs -->
+  </Physical>
+</FixtureDefinition>
+```
+
+## File Management
+
+```cpp
+// From qlcfixturedef.h:229-238
+QFile::FileError saveXML(const QString& fileName);
+QFile::FileError loadXML(const QString& fileName);
+```
+
+### Saving Fixtures
+
+<Steps>
+  <Step title="User vs System Definitions">
+    - **User definitions**: Saved in your user directory
+    - **System definitions**: In QLC+ installation folder
+    - User definitions are preserved during updates
+  </Step>
+
+  <Step title="File Naming">
+    Use format: `Manufacturer-Model.qxf`
+    
+    Examples:
+    - `Martin-MAC-250.qxf`
+    - `Chauvet-Intimidator-Spot-360.qxf`
+  </Step>
+
+  <Step title="File Location">
+    User fixtures are stored in:
+    - **Linux**: `~/.qlcplus/fixtures/`
+    - **Windows**: `%APPDATA%\qlcplus\fixtures\`
+    - **macOS**: `~/Library/Application Support/QLC+/fixtures/`
+  </Step>
+</Steps>
+
+### Sharing Definitions
+
+<Note>
+Consider contributing your fixture definitions to the QLC+ project! Submit them via the QLC+ forum or GitHub repository to help other users.
+</Note>
+
+## Best Practices
+
+<Accordion title="Documentation First">
+  - Obtain the fixture's DMX protocol chart from the manufacturer
+  - Note all operating modes and their channel layouts
+  - Identify all capabilities and their DMX value ranges
+  - Document any special behaviors or quirks
+</Accordion>
+
+<Accordion title="Naming Conventions">
+  - Use official manufacturer and model names
+  - Match mode names to fixture documentation
+  - Use clear, descriptive channel names
+  - Be consistent with existing QLC+ fixtures
+</Accordion>
+
+<Accordion title="Channel Organization">
+  - Group related channels logically in the pool
+  - Use presets for standard channels when possible
+  - Ensure all capabilities cover 0-255 range
+  - Add detailed capability descriptions
+</Accordion>
+
+<Accordion title="Testing">
+  - Test every mode with a physical fixture if possible
+  - Verify all channels respond correctly
+  - Check capability ranges match documented behavior
+  - Test with actual QLC+ functions and scenes
+</Accordion>
+
+<Accordion title="Completeness">
+  - Include all modes the fixture offers
+  - Document all channels, even if not commonly used
+  - Add accurate physical properties
+  - Include author information in the Creator tag
+</Accordion>
+
+## Common Channel Examples
+
+### Dimmer Channel
+
+```xml
+<Channel Name="Dimmer" Preset="IntensityDimmer"/>
+<!-- Or manually: -->
+<Channel Name="Dimmer">
+  <Group Byte="0">Intensity</Group>
+  <Capability Min="0" Max="255">0% - 100%</Capability>
+</Channel>
+```
+
+### Strobe Channel
+
+```xml
+<Channel Name="Strobe">
+  <Group Byte="0">Shutter</Group>
+  <Capability Min="0" Max="7">Closed</Capability>
+  <Capability Min="8" Max="15">Open</Capability>
+  <Capability Min="16" Max="131">Strobe Slow to Fast</Capability>
+  <Capability Min="132" Max="139">Open</Capability>
+  <Capability Min="140" Max="181">Pulse Strobe Slow to Fast</Capability>
+  <Capability Min="182" Max="189">Open</Capability>
+  <Capability Min="190" Max="231">Random Strobe Slow to Fast</Capability>
+  <Capability Min="232" Max="255">Open</Capability>
+</Channel>
+```
+
+### Pan/Tilt (16-bit)
+
+```xml
+<Channel Name="Pan" Preset="PositionPan"/>
+<Channel Name="Pan Fine" Preset="PositionPanFine"/>
+<Channel Name="Tilt" Preset="PositionTilt"/>
+<Channel Name="Tilt Fine" Preset="PositionTiltFine"/>
+```
+
+### Color Wheel
+
+```xml
+<Channel Name="Color">
+  <Group Byte="0">Colour</Group>
+  <Capability Min="0" Max="13" Color="#ffffff">White</Capability>
+  <Capability Min="14" Max="27" Color="#ff0000">Red</Capability>
+  <Capability Min="28" Max="41" Color="#00ff00">Green</Capability>
+  <Capability Min="42" Max="55" Color="#0000ff">Blue</Capability>
+  <Capability Min="56" Max="69" Color="#ffff00">Yellow</Capability>
+  <!-- ... -->
+  <Capability Min="128" Max="255">Scroll CW Fast to Slow</Capability>
+</Channel>
+```
+
+## Troubleshooting
+
+### Fixture Not Working Correctly
+
+- Verify the DMX protocol chart from the manufacturer
+- Check that mode channel order exactly matches documentation
+- Ensure capabilities have no gaps in the 0-255 range
+- Test with DMX monitor to see actual values being sent
+
+### Modes Not Appearing
+
+- Confirm mode name doesn't conflict with existing modes
+- Check that all referenced channels exist in the pool
+- Verify XML syntax is correct (use XML validator)
+- Reload fixture definitions in QLC+
+
+### Channel Values Incorrect
+
+- Review capability ranges for accuracy
+- Check for overlapping capability ranges
+- Verify byte order for 16-bit channels
+- Ensure channel group is correct
+
+## Next Steps
+
+- Learn about [Adding Fixtures](/fixtures/adding-fixtures) using your custom definitions
+- Explore [Channel Modifiers](/fixtures/channel-modifiers) for adjusting behavior
+- Create [Fixture Groups](/fixtures/fixture-groups) with your new fixtures

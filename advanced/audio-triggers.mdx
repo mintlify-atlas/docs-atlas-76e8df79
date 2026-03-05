@@ -1,0 +1,468 @@
+---
+title: Audio Triggers
+description: Audio input, beat detection, and sound-reactive lighting
+---
+
+QLC+ includes powerful audio analysis capabilities for creating sound-reactive lighting. The audio engine captures audio input, performs FFT analysis, detects beats, and provides spectrum data for triggering effects.
+
+## Overview
+
+Audio features include:
+- Real-time audio capture from input devices
+- FFT spectrum analysis with configurable bands
+- Automatic beat detection
+- Volume/power measurement
+- Integration with Virtual Console
+- Function triggering based on audio
+
+## Audio Capture
+
+### AudioCapture Class
+
+The core audio engine captures and processes audio:
+
+```cpp
+// From audiocapture.h:59
+class AudioCapture : public QThread
+{
+    Q_OBJECT
+public:
+    AudioCapture(QObject* parent = 0);
+    ~AudioCapture();
+    
+    int defaultBarsNumber() const;
+    void registerBandsNumber(int number);
+    void unregisterBandsNumber(int number);
+};
+```
+
+### Audio Parameters
+
+```cpp
+// From audiocapture.h:34
+#define SETTINGS_AUDIO_INPUT_DEVICE   "audio/input"
+#define SETTINGS_AUDIO_INPUT_SRATE    "audio/samplerate"
+#define SETTINGS_AUDIO_INPUT_CHANNELS "audio/channels"
+
+#define AUDIO_DEFAULT_SAMPLE_RATE     44100
+#define AUDIO_DEFAULT_CHANNELS        1
+#define AUDIO_DEFAULT_BUFFER_SIZE     2048 // bytes per channel
+```
+
+**Configuration**:
+- **Sample Rate**: 44100 Hz (CD quality)
+- **Channels**: Mono (1 channel) for analysis
+- **Buffer Size**: 2048 samples for FFT
+
+<Info>
+The audio capture runs in a separate thread to avoid blocking the main DMX engine. This ensures smooth lighting output even with heavy audio processing.
+</Info>
+
+## Spectrum Analysis
+
+### FFT Processing
+
+Fast Fourier Transform converts time-domain audio to frequency spectrum:
+
+```cpp
+// From audiocapture.h:165
+/** **************** FFT variables ********************** */
+double *m_fftInputBuffer;
+void *m_fftOutputBuffer;
+#ifdef HAS_FFTW3
+fftw_plan m_plan_forward;
+#endif
+```
+
+### Frequency Bands
+
+```cpp
+// From audiocapture.h:42
+#define FREQ_SUBBANDS_MAX_NUMBER        32
+#define FREQ_SUBBANDS_DEFAULT_NUMBER    16
+#define SPECTRUM_MIN_FREQUENCY          40
+#define SPECTRUM_MAX_FREQUENCY          5000
+```
+
+The spectrum is divided into frequency bands:
+- **Bass**: 40-250 Hz
+- **Mids**: 250-2000 Hz  
+- **Highs**: 2000-5000 Hz
+
+### Bands Registration
+
+Clients can request different numbers of bands:
+
+```cpp
+// From audiocapture.h:77
+/**
+ * Request the given number of frequency bands to the
+ * audiocapture engine
+ */
+void registerBandsNumber(int number);
+
+/**
+ * Cancel a previous request of bars
+ */
+void unregisterBandsNumber(int number);
+```
+
+```cpp
+// From audiocapture.h:53
+struct BandsData
+{
+    int m_registerCounter;
+    QVector<double> m_fftMagnitudeBuffer;
+};
+
+/** Map of the registered clients (key is the number of bands) */
+QMap <int, BandsData> m_fftMagnitudeMap;
+```
+
+<Note>
+Multiple widgets can request different band counts simultaneously. The audio engine calculates and caches each requested configuration.
+</Note>
+
+## Data Processing
+
+### Processing Pipeline
+
+```cpp
+// From audiocapture.h:140
+/** This is the method where captured audio data is processed in this order
+ *  1) calculates the signal power, which will be the volume bar
+ *  2) perform the FFT
+ *  3) retrieve the signal magnitude for each registered number of bands
+ */
+void processData();
+```
+
+Steps:
+1. **Read Audio**: Capture samples from input device
+2. **Calculate Power**: Sum of squared samples for volume
+3. **Perform FFT**: Convert to frequency domain
+4. **Extract Bands**: Calculate magnitude for each band
+5. **Emit Signals**: Send data to registered listeners
+
+### Data Signal
+
+```cpp
+// From audiocapture.h:147
+signals:
+    void dataProcessed(double *spectrumBands, int size, 
+                      double maxMagnitude, quint32 power);
+    void volumeChanged(int volume);
+    void beatDetected();
+```
+
+**Signal Parameters**:
+- `spectrumBands`: Array of magnitude values for each band
+- `size`: Number of bands
+- `maxMagnitude`: Peak magnitude across all bands
+- `power`: Overall signal power (volume)
+
+## Beat Detection
+
+### Beat Tracker
+
+```cpp
+// From audiocapture.h:176
+/** Reference to the beat tracking processor */
+BeatTracker *m_beatTracker;
+```
+
+The beat tracker analyzes audio energy patterns to detect beats:
+- Monitors low-frequency energy (bass)
+- Tracks energy history
+- Detects sudden energy increases
+- Emits beat events
+
+### Beat Signal
+
+```cpp
+// From audiocapture.h:150
+void beatDetected();
+```
+
+This signal is emitted when a beat is detected, allowing:
+- Strobe effects on beats
+- Scene changes synchronized to music
+- Beat-driven chases
+- Flash buttons
+
+<Steps>
+  <Step title="Configure Input">
+    Select audio input device in settings
+  </Step>
+  <Step title="Add Widget">
+    Add Audio Triggers widget to Virtual Console
+  </Step>
+  <Step title="Assign Functions">
+    Assign functions to frequency bands or beat
+  </Step>
+  <Step title="Set Thresholds">
+    Adjust trigger thresholds for sensitivity
+  </Step>
+  <Step title="Play Audio">
+    Functions trigger automatically based on audio
+  </Step>
+</Steps>
+
+## Audio Triggers Widget
+
+### Widget Implementation
+
+```cpp
+// From audiotriggerwidget.h:29
+class AudioTriggerWidget final : public QWidget
+{
+    Q_OBJECT
+public:
+    explicit AudioTriggerWidget(QWidget *parent = 0);
+    ~AudioTriggerWidget();
+    
+    void setBarsNumber(int num);
+    int barsNumber();
+    void setMaxFrequency(int freq);
+    
+    uchar getUcharVolume();
+    uchar getUcharBand(int idx);
+    
+public slots:
+    void displaySpectrum(double *spectrumData, double maxMagnitude, 
+                        quint32 power);
+};
+```
+
+### Spectrum Display
+
+The widget displays:
+- **Spectrum bars**: Visual representation of each frequency band
+- **Volume bar**: Overall audio level
+- **Peak indicators**: Maximum values
+
+```cpp
+// From audiotriggerwidget.h:54
+private:
+    double *m_spectrumBands;
+    int m_spectrumHeight;
+    quint32 m_volumeBarHeight;
+    int m_barsNumber;
+    float m_barWidth;
+    int m_maxFrequency;
+```
+
+### Value Conversion
+
+```cpp
+// From audiotriggerwidget.h:41
+uchar getUcharVolume();
+uchar getUcharBand(int idx);
+```
+
+These methods convert floating-point audio data to DMX values (0-255):
+- Volume is scaled to full DMX range
+- Band magnitudes are normalized
+- Peak detection for trigger points
+
+## Audio Function
+
+### Audio Playback
+
+QLC+ can play audio files as functions:
+
+```cpp
+// From audio.h:36
+class Audio final : public Function
+{
+    Q_OBJECT
+    Q_DISABLE_COPY(Audio)
+    
+public:
+    Audio(Doc* doc);
+    virtual ~Audio();
+    
+    quint32 totalDuration() override;
+    void setTotalDuration(quint32 msec) override;
+    
+    bool setSourceFileName(QString filename);
+    QString getSourceFileName();
+};
+```
+
+### Audio Decoder
+
+```cpp
+// From audio.h:103
+/**
+ * Retrieve the currently associated audio decoder
+ */
+AudioDecoder* getAudioDecoder();
+```
+
+Supported formats (via plugins):
+- MP3 (via MAD library)
+- WAV, FLAC, OGG (via libsndfile)
+- Other formats via system codecs
+
+### Audio Renderer
+
+```cpp
+// From audio.h:132
+/** output interface to render audio data got from m_decoder */
+AudioRenderer *m_audio_out;
+/** Audio device to use for rendering */
+QString m_audioDevice;
+```
+
+Output devices:
+- System default
+- Specific output device
+- Multiple devices supported
+
+### Volume Control
+
+```cpp
+// From audio.h:112
+/** Get/Set the audio function startup volume */
+qreal volume() const;
+void setVolume(qreal volume);
+```
+
+Volume range: 0.0 (mute) to 1.0 (full)
+
+<Info>
+Audio functions can be synchronized with Shows to create perfectly timed light and sound productions.
+</Info>
+
+## Integration Examples
+
+### Virtual Console Integration
+
+Audio triggers in Virtual Console:
+1. Audio bar displays spectrum
+2. Each band can trigger a function
+3. Volume threshold controls
+4. Beat detection triggers
+
+### Function Control
+
+Audio-based function control:
+- Start scene when bass hits
+- Control chase speed with volume
+- Change colors based on frequency
+- Strobe on beat detection
+
+## Platform Support
+
+### Audio Backends
+
+QLC+ supports multiple audio backends:
+
+**Capture Backends**:
+- ALSA (Linux)
+- PortAudio (cross-platform)
+- Qt Multimedia (Qt 5/6)
+- WaveIn (Windows)
+
+**Render Backends**:
+- ALSA (Linux)
+- PortAudio (cross-platform)
+- Qt Multimedia (Qt 5/6)
+- WaveOut (Windows)
+- CoreAudio (macOS)
+
+```cpp
+// From source file structure:
+// audiocapture_alsa.cpp
+// audiocapture_portaudio.cpp
+// audiocapture_qt5.cpp
+// audiocapture_qt6.cpp
+// audiocapture_wavein.cpp
+```
+
+## Configuration
+
+### Input Device Selection
+
+1. Open Settings → Audio
+2. Select input device from dropdown
+3. Choose sample rate (44100 Hz recommended)
+4. Set channel count (mono for analysis)
+5. Test with audio signal
+
+### Trigger Sensitivity
+
+- **Threshold**: Minimum level to trigger
+- **Attack**: How quickly trigger activates
+- **Release**: How quickly trigger deactivates
+- **Band selection**: Choose frequency range
+
+<Steps>
+  <Step title="Connect Input">
+    Connect microphone or line input to computer
+  </Step>
+  <Step title="Configure Device">
+    Select input device in Audio settings
+  </Step>
+  <Step title="Test Signal">
+    Verify audio signal is being captured
+  </Step>
+  <Step title="Add Triggers">
+    Create Audio Triggers widgets in Virtual Console
+  </Step>
+  <Step title="Assign Functions">
+    Link functions to audio bands or beats
+  </Step>
+</Steps>
+
+## Best Practices
+
+- **Input Level**: Adjust input gain for good signal without clipping
+- **Frequency Selection**: Match bands to music genre (more bass for EDM)
+- **Threshold Tuning**: Set thresholds to trigger reliably but not excessively
+- **Latency**: Minimize buffer size for lower latency (at cost of CPU)
+- **Beat Detection**: Works best with clear percussion
+- **Testing**: Test thoroughly with actual music before show
+
+## Performance Considerations
+
+### CPU Usage
+
+FFT processing is CPU-intensive:
+- Larger FFT sizes = better frequency resolution but more CPU
+- More bands = more calculations
+- Multiple clients = cached calculations reused
+
+### Latency
+
+Factors affecting latency:
+- Buffer size: Smaller = lower latency
+- Sample rate: Higher = more processing
+- Audio driver: Some drivers have higher latency
+- System load: Other applications affect performance
+
+### Optimization
+
+```cpp
+// From audiocapture.h:125
+void run() override;  // Runs in separate thread
+```
+
+Optimizations:
+- Separate thread prevents blocking DMX
+- FFTW library is highly optimized
+- Cached band calculations
+- Efficient signal connections
+
+## Troubleshooting
+
+**No audio input**: Check device selection, permissions, connections
+
+**Noisy/erratic triggers**: Reduce sensitivity, add noise gate, check input level
+
+**Missed beats**: Increase sensitivity, check frequency band, verify audio quality
+
+**High CPU usage**: Reduce band count, increase buffer size, close other apps
+
+**Latency issues**: Decrease buffer size, check audio driver settings

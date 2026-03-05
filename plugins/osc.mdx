@@ -1,0 +1,562 @@
+---
+title: OSC Plugin
+description: Open Sound Control protocol for flexible bidirectional communication
+---
+
+## Overview
+
+The OSC (Open Sound Control) plugin enables QLC+ to communicate using the OSC protocol, a flexible, network-based protocol originally designed for musical applications. OSC provides more flexibility than traditional protocols through its named path system and support for various data types.
+
+<Note>
+The plugin name as reported by QLC+ is **"OSC"**
+</Note>
+
+## Capabilities
+
+The OSC plugin supports:
+
+- **Input** - Receive OSC messages from controllers and software
+- **Output** - Send OSC messages to devices and applications
+- **Feedback** - Bidirectional communication for visual feedback
+- **Infinite** - Unlimited universes
+
+## Protocol Specifications
+
+- **Protocol:** OSC (Open Sound Control)
+- **Transport:** UDP (User Datagram Protocol)
+- **Default Port:** Configurable (commonly 7700, 8000, or 9000)
+- **Addressing:** Path-based (e.g., `/qlc/channel/1/value`)
+- **Data Types:** Integer, Float, String, Blob
+
+## OSC vs DMX/MIDI
+
+OSC differs from traditional lighting control protocols:
+
+<CardGroup cols={2}>
+  <Card title="OSC" icon="wave-square">
+    - Path-based addressing (`/path/to/control`)
+    - Multiple data types (int, float, string)
+    - Flexible message structure
+    - Human-readable paths
+    - No fixed channel count
+  </Card>
+  <Card title="DMX/MIDI" icon="signal">
+    - Numeric addressing (channel 1-512)
+    - Fixed 8-bit values (0-255)
+    - Rigid message structure
+    - Numeric identifiers
+    - Fixed channel counts
+  </Card>
+</CardGroup>
+
+## Network Structure
+
+The plugin creates a controller per IP address:
+
+```cpp
+typedef struct _oio
+{
+    QString IPAddress;         // Controller IP address
+    OSCController* controller; // Controller instance
+} OSCIO;
+```
+
+## Configuration
+
+### Custom Parameters
+
+```cpp
+#define OSC_INPUTPORT "inputPort"         // Port to listen for input
+#define OSC_FEEDBACKIP "feedbackIP"       // IP for feedback messages
+#define OSC_FEEDBACKPORT "feedbackPort"   // Port for feedback
+#define OSC_OUTPUTIP "outputIP"           // Target IP for output
+#define OSC_OUTPUTPORT "outputPort"       // Target port for output
+```
+
+### Network Interface Wait Time
+
+Like other network plugins, OSC waits for interfaces to be ready:
+
+```cpp
+#define SETTINGS_IFACE_WAIT_TIME "OSCPlugin/ifacewait"
+```
+
+### Setting Parameters
+
+```cpp
+void setParameter(quint32 universe, quint32 line,
+                  Capability type, QString name, QVariant value);
+```
+
+**Example configuration:**
+```cpp
+// Configure output
+setParameter(universe, line, Output, "outputIP", "192.168.1.100");
+setParameter(universe, line, Output, "outputPort", 9000);
+
+// Configure input  
+setParameter(universe, line, Input, "inputPort", 8000);
+
+// Configure feedback
+setParameter(universe, line, Input, "feedbackIP", "192.168.1.50");
+setParameter(universe, line, Input, "feedbackPort", 9001);
+```
+
+## Universe Configuration
+
+```cpp
+typedef struct _uinfo
+{
+    QSharedPointer<QUdpSocket> inputSocket;  // Input socket
+    quint16 inputPort;                       // Input port
+    
+    QHostAddress feedbackAddress;            // Feedback destination IP
+    quint16 feedbackPort;                    // Feedback destination port
+    
+    QHostAddress outputAddress;              // Output destination IP
+    quint16 outputPort;                      // Output destination port
+    
+    QHash<QString, QByteArray> multipartCache; // Multi-value path cache
+    int type;                                // Input, Output, or both
+} UniverseInfo;
+```
+
+## OSC Address Paths
+
+OSC uses hierarchical path-based addressing:
+
+### Standard QLC+ Paths
+
+QLC+ uses a standardized path structure:
+
+```
+/qlc/channel/{channel}/value      // Set channel value
+/qlc/channel/{channel}/get        // Get channel value
+/qlc/fade/{channel}/{value}/{ms}  // Fade channel over time
+```
+
+**Examples:**
+```
+/qlc/channel/1/value 255          // Set channel 1 to 255
+/qlc/channel/10/value 128         // Set channel 10 to 128
+/qlc/fade/5/255/2000             // Fade channel 5 to 255 over 2 seconds
+```
+
+<Note>
+OSC paths are case-sensitive. `/qlc/channel/1` is different from `/QLC/Channel/1`.
+</Note>
+
+### Custom Paths
+
+You can define custom paths for integration with other software:
+
+```
+/custom/dimmer/1
+/lights/rgb/red
+/control/master/intensity
+```
+
+### Path Mapping
+
+The plugin uses a hash map to convert OSC paths to QLC+ channels:
+
+```cpp
+QHash<QString, quint16> m_hashMap;  // Path to channel mapping
+quint16 getHash(QString path);      // Calculate channel from path
+```
+
+Each unique path is assigned a 16-bit channel number based on a checksum.
+
+<Accordion title="How path hashing works">
+When an OSC message arrives with a path like `/control/dimmer/1`, the plugin:
+1. Calculates a 16-bit hash of the path string
+2. Stores the mapping in `m_hashMap` if new
+3. Uses the hash as the QLC+ channel number
+4. Reports value changes on that channel
+
+This allows virtually unlimited OSC paths to be mapped to channels.
+</Accordion>
+
+## Input Configuration
+
+### Opening Input
+
+```cpp
+bool openInput(quint32 input, quint32 universe);
+```
+
+When opening input:
+1. Creates or reuses OSC controller for the IP
+2. Creates UDP socket listening on specified port
+3. Starts receiving OSC messages
+
+### Receiving OSC Messages
+
+When OSC packets arrive:
+
+```cpp
+slot void slotProcessPackets();  // Process incoming UDP packets
+```
+
+The plugin:
+1. Receives UDP datagram
+2. Parses OSC packet structure
+3. Extracts path and arguments
+4. Calculates channel number from path
+5. Emits `valueChanged()` signal
+
+```cpp
+signal void valueChanged(quint32 universe, quint32 input,
+                        quint32 channel, uchar value, const QString& key);
+```
+
+<Note>
+OSC is the only plugin that uses the `key` parameter in `valueChanged()` - it passes the OSC path string.
+</Note>
+
+### Multi-Value Paths
+
+OSC paths can contain multiple values:
+
+```
+/rgb/color 255 128 64  // RGB values in one message
+```
+
+The plugin uses a multipart cache to handle this:
+
+```cpp
+QHash<QString, QByteArray> multipartCache;
+```
+
+Multiple values from the same path are stored and processed together.
+
+## Output Configuration
+
+### Opening Output
+
+```cpp
+bool openOutput(quint32 output, quint32 universe);
+```
+
+### Sending OSC Messages
+
+```cpp
+void writeUniverse(quint32 universe, quint32 output,
+                   const QByteArray& data, bool dataChanged);
+```
+
+The plugin:
+1. Receives DMX-style data (0-255 per channel)
+2. Converts to OSC messages with appropriate paths
+3. Packetizes according to OSC specification
+4. Sends via UDP to configured output address and port
+
+### OSC Message Format
+
+OSC messages sent by QLC+:
+
+```
+Path: /qlc/channel/{n}/value
+Arguments: [integer value 0-255]
+```
+
+**Example UDP packet:**
+```
+/qlc/channel/1/value\0\0\0,i\0\0\0\0\0\xff
+  Path (null-terminated, padded)
+  Type tag string (,i = integer)
+  Value (32-bit big-endian)
+```
+
+## Feedback Support
+
+OSC supports full bidirectional feedback:
+
+```cpp
+void sendFeedBack(quint32 universe, quint32 input,
+                  quint32 channel, uchar value, const QVariant &params);
+```
+
+Feedback flow:
+1. QLC+ internal state changes
+2. Plugin sends OSC message to feedback address
+3. Controller/software receives and updates display
+
+**Params can include:**
+- OSC path string (from the `key` parameter)
+- Additional metadata
+
+<Note>
+Feedback requires separate IP/port configuration from output, allowing different targets for control vs feedback.
+</Note>
+
+## Common Use Cases
+
+### TouchOSC / OSCulator
+
+**Configuration:**
+```cpp
+// Input from TouchOSC
+setParameter(universe, line, Input, "inputPort", 8000);
+
+// Feedback to TouchOSC
+setParameter(universe, line, Input, "feedbackIP", "192.168.1.50");
+setParameter(universe, line, Input, "feedbackPort", 9000);
+```
+
+**Example paths:**
+```
+/1/fader1     // Fader on page 1
+/1/toggle1    // Button on page 1
+/2/xy/x       // X position of XY pad
+/2/xy/y       // Y position of XY pad
+```
+
+### QLab Integration
+
+**Configuration:**
+```cpp
+// Output to QLab
+setParameter(universe, line, Output, "outputIP", "127.0.0.1");
+setParameter(universe, line, Output, "outputPort", 53000);
+
+// Input from QLab
+setParameter(universe, line, Input, "inputPort", 53001);
+```
+
+**QLab OSC commands:**
+```
+/go                    // Start next cue
+/cue/{id}/start       // Start specific cue
+/workspace/{}/go      // Go in specific workspace
+```
+
+### Ableton Live / Max MSP
+
+**Configuration:**
+```cpp
+// Bidirectional with Ableton
+setParameter(universe, line, Output, "outputIP", "127.0.0.1");
+setParameter(universe, line, Output, "outputPort", 9001);
+setParameter(universe, line, Input, "inputPort", 9000);
+```
+
+**Example Live paths:**
+```
+/live/track/{id}/volume
+/live/track/{id}/send/{n}
+/live/clip/{track}/{clip}/play
+```
+
+### Node-RED / Custom Software
+
+OSC's flexibility makes it ideal for custom integrations:
+
+```javascript
+// Node.js example using node-osc
+const osc = require('node-osc');
+
+// Send to QLC+
+var client = new osc.Client('192.168.1.100', 8000);
+client.send('/qlc/channel/1/value', 255);
+
+// Receive from QLC+
+var server = new osc.Server(9000, '0.0.0.0');
+server.on('message', function(msg) {
+  console.log('Received:', msg);
+});
+```
+
+## Network Configuration
+
+### Firewall Configuration
+
+**Allow OSC ports:**
+
+```bash
+# Linux (iptables)
+sudo iptables -A INPUT -p udp --dport 8000 -j ACCEPT
+sudo iptables -A OUTPUT -p udp --dport 9000 -j ACCEPT
+
+# Linux (firewalld)
+sudo firewall-cmd --permanent --add-port=8000/udp
+sudo firewall-cmd --permanent --add-port=9000/udp
+sudo firewall-cmd --reload
+```
+
+### Localhost vs Network
+
+<Tabs>
+  <Tab title="Localhost (127.0.0.1)">
+    **Use for:**
+    - Same-computer communication
+    - Integration with local software
+    - Testing and development
+    
+    **Configuration:**
+    ```cpp
+    setParameter(universe, line, Output, "outputIP", "127.0.0.1");
+    ```
+    
+    **Advantages:**
+    - No network configuration needed
+    - No firewall issues
+    - Maximum performance
+  </Tab>
+  <Tab title="Network IP">
+    **Use for:**
+    - Tablet/phone controllers
+    - Remote software
+    - Distributed systems
+    
+    **Configuration:**
+    ```cpp
+    setParameter(universe, line, Output, "outputIP", "192.168.1.50");
+    ```
+    
+    **Requirements:**
+    - Network connectivity
+    - Firewall configuration
+    - Static IP recommended
+  </Tab>
+</Tabs>
+
+## Performance Considerations
+
+### UDP Packet Size
+
+OSC has no built-in size limit, but UDP datagrams should be:
+- **Ideal:** < 1472 bytes (Ethernet MTU - headers)
+- **Maximum:** 65507 bytes (UDP maximum)
+
+<Warning>
+Large OSC messages may fragment across multiple UDP packets, increasing loss risk. Keep messages small when possible.
+</Warning>
+
+### Message Rate
+
+Unlike DMX's fixed 44Hz rate, OSC can send at any rate:
+
+- **Low priority:** 1-10 Hz
+- **Normal:** 20-50 Hz
+- **High priority:** 100+ Hz
+
+Balance update rate with network bandwidth.
+
+### Bundle vs Individual Messages
+
+OSC supports bundles (multiple messages in one packet):
+
+**Bundle benefits:**
+- Reduced packet overhead
+- Atomic updates (all values change together)
+- Better network efficiency
+
+**Individual message benefits:**
+- Simpler parsing
+- Lower latency
+- Easier debugging
+
+## Troubleshooting
+
+### No Input Received
+
+<AccordionGroup>
+  <Accordion title="Check port configuration">
+    Verify input port matches the sending device's output port
+  </Accordion>
+  <Accordion title="Test with OSC debugging tools">
+    Use tools like OSC Monitor or Protokol to verify messages are being sent
+  </Accordion>
+  <Accordion title="Check firewall">
+    Ensure the input port is open for UDP traffic
+  </Accordion>
+  <Accordion title="Verify IP address">
+    Sender must target the correct IP address of the QLC+ computer
+  </Accordion>
+</AccordionGroup>
+
+### No Output Sent
+
+1. Verify output is opened and patched
+2. Check output IP and port configuration
+3. Ensure target device is listening on the specified port
+4. Use Wireshark to verify UDP packets are being sent
+5. Check if target device requires specific OSC paths
+
+### Feedback Not Working
+
+1. Verify feedback IP and port are configured
+2. Ensure they differ from output IP/port if targeting same device
+3. Check if controller supports receiving OSC feedback
+4. Verify feedback paths match controller expectations
+
+### Path Conflicts
+
+If multiple OSC paths hash to the same channel:
+
+1. Paths use 16-bit hash, collisions are possible but rare
+2. Use more distinctive path names
+3. Check for path duplicates in sending software
+
+## OSC Debugging Tools
+
+### Command Line Tools
+
+**Send test message:**
+```bash
+# Using oscsend (from liblo-tools)
+oscsend localhost 8000 /qlc/channel/1/value i 255
+```
+
+**Monitor OSC messages:**
+```bash
+# Using oscdump (from liblo-tools)
+oscdump 9000
+```
+
+### GUI Tools
+
+<CardGroup cols={2}>
+  <Card title="OSC Monitor">
+    Visual OSC message monitor for debugging
+  </Card>
+  <Card title="Protokol">
+    Advanced OSC/MIDI debugging tool (macOS)
+  </Card>
+  <Card title="TouchOSC Editor">
+    Design custom control interfaces
+  </Card>
+  <Card title="Lemur Editor">
+    Advanced multi-touch controller designer
+  </Card>
+</CardGroup>
+
+### Wireshark Filtering
+
+Capture OSC traffic:
+```
+udp.port == 8000
+```
+
+To decode OSC messages, you may need to manually parse the hex dump.
+
+## OSC Specification
+
+For detailed OSC protocol information:
+- [OpenSoundControl.org](http://opensoundcontrol.org/)
+- OSC 1.0 Specification
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="MIDI Plugin" icon="music" href="/plugins/midi">
+    MIDI protocol support
+  </Card>
+  <Card title="Art-Net" icon="network-wired" href="/plugins/artnet">
+    DMX over Ethernet
+  </Card>
+  <Card title="Plugin Overview" icon="plug" href="/plugins/overview">
+    Learn about the plugin architecture
+  </Card>
+</CardGroup>

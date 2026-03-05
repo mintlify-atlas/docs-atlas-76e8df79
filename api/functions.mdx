@@ -1,0 +1,807 @@
+---
+title: Functions API
+description: Detailed API reference for QLC+ function types
+---
+
+Functions are the building blocks of lighting shows in QLC+. Each function type inherits from the base `Function` class and implements specific behaviors.
+
+## Base Function Class
+
+All functions inherit from `Function` (engine/src/function.h:93).
+
+### Creating Functions
+
+```cpp
+Function(Doc* doc, Type t);
+```
+
+<ParamField path="doc" type="Doc*">
+  Parent document that owns this function
+</ParamField>
+
+<ParamField path="t" type="Type">
+  Function type (SceneType, ChaserType, etc.)
+</ParamField>
+
+### Common Properties
+
+<Tabs>
+  <Tab title="Identity">
+    ```cpp
+    void setID(quint32 id);
+    quint32 id() const;
+    static quint32 invalidId();
+    
+    void setName(const QString& name);
+    QString name() const;
+    
+    Type type() const;
+    QString typeString() const;
+    static QString typeToString(Type type);
+    static Type stringToType(const QString& str);
+    ```
+  </Tab>
+  
+  <Tab title="Timing">
+    ```cpp
+    // Fade in/out speeds
+    void setFadeInSpeed(uint ms);
+    uint fadeInSpeed() const;
+    void setFadeOutSpeed(uint ms);
+    uint fadeOutSpeed() const;
+    
+    // Hold time (for chasers)
+    void setDuration(uint ms);
+    uint duration() const;
+    
+    // Total duration
+    void setTotalDuration(uint ms);
+    uint totalDuration() const;
+    uint elapsed() const;
+    ```
+  </Tab>
+  
+  <Tab title="Playback">
+    ```cpp
+    enum Direction { Forward, Backward };
+    enum RunOrder { Loop, SingleShot, PingPong, Random };
+    enum TempoType { Time, Beats };
+    
+    void setDirection(Direction dir);
+    Direction direction() const;
+    
+    void setRunOrder(RunOrder order);
+    RunOrder runOrder() const;
+    
+    void setTempoType(TempoType type);
+    TempoType tempoType() const;
+    ```
+  </Tab>
+  
+  <Tab title="Control">
+    ```cpp
+    virtual void start(MasterTimer* timer, FunctionParent* parent);
+    virtual void stop(FunctionParent* parent);
+    virtual void stopAndWait();
+    
+    bool isRunning() const;
+    bool isPaused() const;
+    void togglePause();
+    
+    // Override from subclasses
+    virtual void write(MasterTimer* timer, QList<Universe*> universes) = 0;
+    ```
+  </Tab>
+</Tabs>
+
+## Scene
+
+Sets specific DMX values for fixtures.
+
+### Creating Scenes
+
+```cpp
+Scene* scene = new Scene(doc);
+scene->setName("My Scene");
+
+// Set channel values
+scene->setValue(fixtureId, channelIndex, value);
+scene->setValue(SceneValue(fixtureId, channelIndex, value));
+
+// Add to document
+doc->addFunction(scene);
+```
+
+### Channel Values
+
+```cpp
+class SceneValue
+{
+public:
+    SceneValue(quint32 fxi, quint32 ch, uchar val);
+    
+    quint32 fxi;      // Fixture ID
+    quint32 channel;  // Channel index
+    uchar value;      // DMX value (0-255)
+};
+```
+
+### Scene API
+
+<Tabs>
+  <Tab title="Value Management">
+    ```cpp
+    // Set values
+    void setValue(quint32 fxi, quint32 ch, uchar value);
+    void setValue(const SceneValue& scv);
+    void setValues(QList<SceneValue>& values);
+    
+    // Get values
+    uchar value(quint32 fxi, quint32 ch) const;
+    QList<SceneValue> values() const;
+    
+    // Remove values
+    void unsetValue(quint32 fxi, quint32 ch);
+    void clear();
+    ```
+  </Tab>
+  
+  <Tab title="Blend Mode">
+    ```cpp
+    enum BlendMode {
+        Default,   // Use fixture's default (HTP/LTP)
+        Additive   // Add to existing values
+    };
+    
+    void setBlendMode(BlendMode mode);
+    BlendMode blendMode() const;
+    ```
+  </Tab>
+  
+  <Tab title="Channel Groups">
+    ```cpp
+    // Apply to channel groups
+    void setChannelGroupValue(quint32 groupId, uchar value);
+    
+    // Get fixtures used
+    QList<quint32> fixtures() const;
+    QList<quint32> components() const;
+    ```
+  </Tab>
+</Tabs>
+
+### Example: Creating a Red Wash
+
+```cpp
+Scene* redWash = new Scene(doc);
+redWash->setName("Red Wash");
+redWash->setFadeInSpeed(2000);   // 2 second fade in
+redWash->setFadeOutSpeed(1000);  // 1 second fade out
+
+// Set all RGB fixtures to red
+for (Fixture* fixture : doc->fixtures())
+{
+    if (fixture->type() == Fixture::GenericRGB)
+    {
+        redWash->setValue(fixture->id(), 0, 255);  // Red channel
+        redWash->setValue(fixture->id(), 1, 0);    // Green channel
+        redWash->setValue(fixture->id(), 2, 0);    // Blue channel
+    }
+}
+
+doc->addFunction(redWash);
+```
+
+## Chaser
+
+Sequences multiple functions in order.
+
+### Chaser Steps
+
+```cpp
+class ChaserStep
+{
+public:
+    ChaserStep(quint32 fid = Function::invalidId());
+    
+    quint32 fid;           // Function ID to run
+    uint fadeIn;           // Fade in time (ms)
+    uint hold;             // Hold time (ms)
+    uint fadeOut;          // Fade out time (ms)
+    uint duration;         // Total duration (ms)
+    QString note;          // Optional note
+};
+```
+
+### Chaser API
+
+<Tabs>
+  <Tab title="Step Management">
+    ```cpp
+    // Add/remove steps
+    bool addStep(const ChaserStep& step);
+    bool addStep(const ChaserStep& step, int index);
+    bool removeStep(int index);
+    bool replaceStep(const ChaserStep& step, int index);
+    bool moveStep(int from, int to);
+    
+    // Access steps
+    QList<ChaserStep> steps() const;
+    ChaserStep stepAt(int index) const;
+    int stepsCount() const;
+    
+    // Clear
+    void clear();
+    ```
+  </Tab>
+  
+  <Tab title="Playback Control">
+    ```cpp
+    // Run order
+    void setRunOrder(RunOrder order);
+    RunOrder runOrder() const;
+    // Options: Loop, SingleShot, PingPong, Random
+    
+    // Direction
+    void setDirection(Direction dir);
+    Direction direction() const;
+    
+    // Speed
+    void setDurationMode(SpeedMode mode);
+    SpeedMode durationMode() const;
+    // Options: Common (use chaser speed), PerStep (use step speeds)
+    ```
+  </Tab>
+  
+  <Tab title="Manual Control">
+    ```cpp
+    // Step to specific position
+    void setStepIndex(int index);
+    int stepIndex() const;
+    
+    // Manual stepping
+    void next();
+    void previous();
+    void tap();
+    ```
+  </Tab>
+</Tabs>
+
+### Example: RGB Color Chase
+
+```cpp
+Chaser* colorChase = new Chaser(doc);
+colorChase->setName("RGB Chase");
+colorChase->setRunOrder(Function::Loop);
+colorChase->setDuration(500);  // 500ms per step
+
+// Create and add color scenes
+Scene* red = createColorScene(doc, "Red", 255, 0, 0);
+Scene* green = createColorScene(doc, "Green", 0, 255, 0);
+Scene* blue = createColorScene(doc, "Blue", 0, 0, 255);
+
+doc->addFunction(red);
+doc->addFunction(green);
+doc->addFunction(blue);
+
+// Add as chaser steps
+colorChase->addStep(ChaserStep(red->id()));
+colorChase->addStep(ChaserStep(green->id()));
+colorChase->addStep(ChaserStep(blue->id()));
+
+doc->addFunction(colorChase);
+```
+
+## EFX
+
+Creates geometric movement patterns for pan/tilt fixtures.
+
+### EFX Algorithms
+
+```cpp
+enum Algorithm {
+    Circle,
+    Eight,
+    Line,
+    Diamond,
+    Square,
+    SquareChoppy,
+    Triangle,
+    Lissajous,
+    Custom
+};
+```
+
+### EFX API
+
+<Tabs>
+  <Tab title="Algorithm">
+    ```cpp
+    // Set algorithm
+    void setAlgorithm(Algorithm algo);
+    Algorithm algorithm() const;
+    QString algorithmName() const;
+    static QStringList algorithmList();
+    
+    // Algorithm parameters
+    void setWidth(int width);
+    int width() const;
+    void setHeight(int height);
+    int height() const;
+    void setXOffset(int offset);
+    int xOffset() const;
+    void setYOffset(int offset);
+    int yOffset() const;
+    void setRotation(int degrees);
+    int rotation() const;
+    
+    // Lissajous-specific
+    void setXFrequency(int freq);
+    int xFrequency() const;
+    void setYFrequency(int freq);
+    int yFrequency() const;
+    void setXPhase(int phase);
+    int xPhase() const;
+    void setYPhase(int phase);
+    int yPhase() const;
+    ```
+  </Tab>
+  
+  <Tab title="Fixtures">
+    ```cpp
+    class EFXFixture {
+    public:
+        quint32 head() const;
+        void setDirection(Direction dir);
+        Direction direction() const;
+        void setStartOffset(int offset);
+        int startOffset() const;
+        // ...
+    };
+    
+    // Add/remove fixtures
+    bool addFixture(EFXFixture* ef);
+    bool removeFixture(EFXFixture* ef);
+    void removeAllFixtures();
+    
+    // Access fixtures
+    QList<EFXFixture*> fixtures() const;
+    int fixtureCount() const;
+    ```
+  </Tab>
+  
+  <Tab title="Propagation">
+    ```cpp
+    enum PropagationMode {
+        Parallel,     // All fixtures move together
+        Serial,       // Fixtures follow in sequence
+        Asymmetric    // Custom offsets per fixture
+    };
+    
+    void setPropagationMode(PropagationMode mode);
+    PropagationMode propagationMode() const;
+    ```
+  </Tab>
+</Tabs>
+
+### Example: Circle Movement
+
+```cpp
+EFX* circle = new EFX(doc);
+circle->setName("Circle");
+circle->setAlgorithm(EFX::Circle);
+circle->setWidth(127);    // Half range
+circle->setHeight(127);
+circle->setXOffset(127);  // Center
+circle->setYOffset(127);
+circle->setDuration(5000); // 5 second cycle
+
+// Add moving heads
+for (Fixture* fixture : doc->fixtures())
+{
+    if (fixture->type() == Fixture::MovingHead)
+    {
+        EFXFixture* ef = new EFXFixture(circle);
+        ef->setHead(FixtureHead(fixture->id(), 0));
+        circle->addFixture(ef);
+    }
+}
+
+doc->addFunction(circle);
+```
+
+## RGB Matrix
+
+Controls LED matrix effects using RGB scripts.
+
+### RGB Matrix API
+
+<Tabs>
+  <Tab title="Script">
+    ```cpp
+    // Set RGB script
+    void setScript(const QString& name);
+    QString script() const;
+    RGBScript* rgbScript() const;
+    
+    // Script properties
+    void setProperty(const QString& name, const QString& value);
+    QString property(const QString& name) const;
+    QMap<QString, QString> properties() const;
+    ```
+  </Tab>
+  
+  <Tab title="Fixture Group">
+    ```cpp
+    // Set fixture group (defines the matrix layout)
+    void setFixtureGroup(quint32 id);
+    quint32 fixtureGroup() const;
+    
+    // Get matrix dimensions
+    QSize size() const;
+    ```
+  </Tab>
+  
+  <Tab title="Animation">
+    ```cpp
+    enum AnimationStyle {
+        Forward,
+        Backward,
+        PingPong,
+        Random,
+        Static
+    };
+    
+    void setAnimationStyle(AnimationStyle style);
+    AnimationStyle animationStyle() const;
+    
+    // Colors
+    void setStartColor(const QColor& color);
+    QColor startColor() const;
+    void setEndColor(const QColor& color);
+    QColor endColor() const;
+    
+    // Offset
+    void setXOffset(int offset);
+    int xOffset() const;
+    void setYOffset(int offset);
+    int yOffset() const;
+    ```
+  </Tab>
+  
+  <Tab title="Text">
+    ```cpp
+    // For text-based scripts
+    void setText(const QString& text);
+    QString text() const;
+    
+    void setFont(const QFont& font);
+    QFont font() const;
+    
+    // Text animation
+    enum TextAnimationStyle {
+        Horizontal,
+        Vertical,
+        Letters,
+        Static
+    };
+    
+    void setTextAnimationStyle(TextAnimationStyle style);
+    TextAnimationStyle textAnimationStyle() const;
+    ```
+  </Tab>
+</Tabs>
+
+### Example: Rainbow Effect
+
+```cpp
+RGBMatrix* rainbow = new RGBMatrix(doc);
+rainbow->setName("Rainbow");
+rainbow->setScript("Gradient");
+rainbow->setProperty("presetIndex", "Rainbow");
+rainbow->setProperty("orientation", "Horizontal");
+rainbow->setFixtureGroup(matrixGroupId);
+rainbow->setAnimationStyle(RGBMatrix::Forward);
+rainbow->setDuration(100);  // Animation speed
+
+doc->addFunction(rainbow);
+```
+
+## Collection
+
+Runs multiple functions simultaneously.
+
+### Collection API
+
+```cpp
+class Collection : public Function
+{
+public:
+    // Add/remove functions
+    bool addFunction(quint32 fid);
+    bool removeFunction(quint32 fid);
+    
+    // Access functions
+    QList<quint32> functions() const;
+    int functionsCount() const;
+    
+    // Clear
+    void clear();
+};
+```
+
+### Example: Full Stage Scene
+
+```cpp
+Collection* fullStage = new Collection(doc);
+fullStage->setName("Full Stage");
+
+// Add multiple scenes and effects
+fullStage->addFunction(washScene->id());
+fullStage->addFunction(beamEffects->id());
+fullStage->addFunction(movementEFX->id());
+fullStage->addFunction(matrixEffect->id());
+
+doc->addFunction(fullStage);
+```
+
+## Show
+
+Timeline-based function with precise timing control.
+
+### Show Tracks
+
+```cpp
+class Track
+{
+public:
+    quint32 id() const;
+    QString name() const;
+    quint32 sceneID() const;
+    bool isMute() const;
+    
+    // Get functions on this track
+    QMultiHash<uint, ShowFunction*> showFunctions() const;
+};
+```
+
+### Show API
+
+```cpp
+class Show : public Function
+{
+public:
+    // Tracks
+    Track* createTrack(quint32 sceneID);
+    bool deleteTrack(quint32 trackId);
+    QList<Track*> tracks() const;
+    Track* track(quint32 id) const;
+    
+    // Show functions
+    bool addShowFunction(quint32 trackId, quint32 startTime, quint32 functionId);
+    bool removeShowFunction(quint32 trackId, quint32 startTime);
+    
+    // Time
+    quint32 totalDuration() const;
+    void setCurrentTime(quint32 time);
+    quint32 currentTime() const;
+};
+```
+
+## Sequence
+
+Specialized scene for recording channel changes over time.
+
+### Sequence API
+
+```cpp
+class Sequence : public Scene
+{
+public:
+    // Bound scene (controls which fixtures)
+    void setBoundSceneID(quint32 id);
+    quint32 boundSceneID() const;
+    
+    // Steps
+    void addStep(QList<SceneValue> values);
+    void removeStep(int index);
+    QList<SceneValue> stepValues(int index) const;
+    int stepsCount() const;
+    
+    // Tempo
+    void setTempoType(TempoType type);
+    TempoType tempoType() const;
+};
+```
+
+## Audio
+
+Controls audio playback.
+
+### Audio API
+
+```cpp
+class Audio : public Function
+{
+public:
+    // Audio file
+    void setSourceFileName(const QString& filename);
+    QString sourceFileName() const;
+    
+    // Playback
+    AudioDecoder* getAudioDecoder() const;
+    qint64 getDuration();
+    
+    // Volume
+    void adjustAttribute(qreal fraction, int attributeIndex) override;
+};
+```
+
+## Video
+
+Controls video playback.
+
+### Video API
+
+```cpp
+class Video : public Function
+{
+public:
+    // Video file
+    void setSourceFileName(const QString& filename);
+    QString sourceFileName() const;
+    
+    // Playback
+    void setFullscreen(bool fullscreen);
+    bool fullscreen() const;
+    
+    // Geometry
+    void setGeometry(const QRect& rect);
+    QRect geometry() const;
+};
+```
+
+## Function Execution Flow
+
+### Lifecycle
+
+<Steps>
+  <Step title="Creation">
+    ```cpp
+    Function* func = new Scene(doc);
+    func->setName("My Function");
+    // Configure function...
+    doc->addFunction(func);
+    ```
+  </Step>
+  
+  <Step title="Starting">
+    ```cpp
+    // Start function
+    doc->masterTimer()->startFunction(func);
+    
+    // Function's start() method is called
+    void Function::start(MasterTimer* timer, FunctionParent* parent)
+    {
+        // Initialize for playback
+        m_running = true;
+        emit running(m_id);
+    }
+    ```
+  </Step>
+  
+  <Step title="Execution">
+    ```cpp
+    // write() is called every tick (typically 50Hz)
+    void Function::write(MasterTimer* timer, QList<Universe*> universes)
+    {
+        // Generate DMX output
+        // Update internal state
+        // Increment elapsed time
+    }
+    ```
+  </Step>
+  
+  <Step title="Stopping">
+    ```cpp
+    // Stop function
+    doc->masterTimer()->stopFunction(func);
+    
+    // Function's stop() method is called
+    void Function::stop(FunctionParent* parent)
+    {
+        m_running = false;
+        emit stopped(m_id);
+    }
+    ```
+  </Step>
+</Steps>
+
+## Custom Functions
+
+You can create custom function types by subclassing `Function`.
+
+### Example: Custom Function
+
+```cpp
+class MyFunction : public Function
+{
+    Q_OBJECT
+
+public:
+    MyFunction(Doc* doc)
+        : Function(doc, Function::ScriptType)
+    {
+        setName("My Function");
+    }
+    
+    // Required overrides
+    Function* createCopy(Doc* doc, bool addToDoc = true) override
+    {
+        MyFunction* copy = new MyFunction(doc);
+        if (copy->copyFrom(this) == false || (addToDoc && doc->addFunction(copy) == false))
+        {
+            delete copy;
+            return nullptr;
+        }
+        return copy;
+    }
+    
+    void write(MasterTimer* timer, QList<Universe*> universes) override
+    {
+        // Your custom logic here
+        if (elapsed() >= duration())
+        {
+            stop();
+        }
+    }
+    
+    bool loadXML(QXmlStreamReader& doc) override
+    {
+        // Load from XML
+        return true;
+    }
+    
+    bool saveXML(QXmlStreamWriter* doc) override
+    {
+        // Save to XML
+        return true;
+    }
+};
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Memory Management">
+    - Functions are owned by `Doc`
+    - Don't delete functions manually - use `Doc::deleteFunction()`
+    - Use `QPointer` for function references that may become invalid
+  </Accordion>
+
+  <Accordion title="Thread Safety">
+    - `write()` is called from MasterTimer thread
+    - Use `QMutex` to protect shared data
+    - Emit signals safely across threads
+  </Accordion>
+
+  <Accordion title="Performance">
+    - `write()` is called at high frequency (50Hz)
+    - Minimize calculations in write path
+    - Cache expensive operations
+    - Avoid allocations in hot path
+  </Accordion>
+
+  <Accordion title="XML Serialization">
+    - Always implement `loadXML()` and `saveXML()`
+    - Call `Function::loadXML()` and `Function::saveXML()` for base class handling
+    - Use XML constants defined in function.h
+  </Accordion>
+</AccordionGroup>
+
+## Resources
+
+- [Engine API](/api/engine)
+- [Fixtures API](/api/fixtures)
+- [Source Code](https://github.com/mcallegari/qlcplus/tree/master/engine/src)
+- [Architecture](/development/architecture)

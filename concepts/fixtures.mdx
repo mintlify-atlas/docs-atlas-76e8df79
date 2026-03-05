@@ -1,0 +1,323 @@
+---
+title: Fixtures
+description: Understanding lighting fixtures, fixture definitions, channels, and capabilities in QLC+
+---
+
+## Overview
+
+A **Fixture** in QLC+ represents a physical lighting device with one or more controllable parameters (channels). Fixtures are the building blocks of your lighting setup, mapping DMX channels to real-world lighting equipment.
+
+<Info>
+QLC+ includes an extensive library of fixture definitions for commercial lighting products, and supports creating custom definitions for specialized equipment.
+</Info>
+
+## Fixture Fundamentals
+
+### Core Properties
+
+Every fixture instance has these essential properties:
+
+```cpp
+class Fixture {
+    quint32 m_id;           // Unique fixture ID
+    QString m_name;         // Friendly name
+    quint32 m_address;      // DMX address (0-511) + universe
+    quint32 m_channels;     // Number of channels
+    bool m_crossUniverse;   // Can span multiple universes
+};
+```
+
+### Universe and Address
+
+The address property combines both universe and DMX channel:
+
+- **Universe**: Stored in highest 7 bits (supports 128 universes)
+- **Address**: Stored in lowest 9 bits (0-511)
+
+```cpp
+// Set universe (0-based)
+fixture->setUniverse(0);
+
+// Set DMX address (0-511, displayed as 1-512 in UI)
+fixture->setAddress(0);
+
+// Get combined address
+quint32 universeAddress = fixture->universeAddress();
+```
+
+## Fixture Definitions
+
+### What is a Fixture Definition?
+
+A **fixture definition** describes the capabilities and channel layout of a lighting device:
+
+```cpp
+class QLCFixtureDef {
+    QString manufacturer;    // e.g., "Chauvet"
+    QString model;          // e.g., "Intimidator Spot 375Z IRC"
+    FixtureType type;       // MovingHead, Scanner, Dimmer, etc.
+    QList<QLCChannel*> channels;
+    QList<QLCFixtureMode*> modes;
+};
+```
+
+### Fixture Types
+
+QLC+ supports various fixture types:
+
+<CardGroup cols={3}>
+  <Card title="Dimmer" icon="lightbulb">
+    Simple intensity control
+  </Card>
+  <Card title="Moving Head" icon="arrow-pointer">
+    Pan, tilt, and effects
+  </Card>
+  <Card title="Scanner" icon="scanner">
+    Mirror-based movement
+  </Card>
+  <Card title="LED Bar" icon="bars">
+    Multi-pixel RGB/RGBW strips
+  </Card>
+  <Card title="Strobe" icon="bolt">
+    Flashing effects
+  </Card>
+  <Card title="Smoke/Hazer" icon="smog">
+    Atmospheric effects
+  </Card>
+</CardGroup>
+
+## Channels and Capabilities
+
+### Channel Groups
+
+Channels are organized by function:
+
+```cpp
+enum ChannelGroup {
+    Intensity,    // Dimmer, master intensity
+    Colour,       // Color wheels, CMY, RGB
+    Gobo,         // Gobo wheels
+    Prism,        // Prism effects
+    Shutter,      // Strobe, shutter
+    Beam,         // Zoom, focus, iris
+    Speed,        // Effect speed
+    Pan,          // Horizontal position
+    Tilt,         // Vertical position
+    Maintenance   // Reset, lamp control
+};
+```
+
+### Channel Capabilities
+
+Capabilities define what a channel does at different value ranges:
+
+```cpp
+class QLCCapability {
+    uchar m_min;           // Minimum DMX value (e.g., 0)
+    uchar m_max;           // Maximum DMX value (e.g., 127)
+    QString m_name;        // Description (e.g., "Red")
+    CapabilityResource m_resource;  // Color, gobo image, etc.
+};
+```
+
+Example: Color wheel channel
+
+| Range | Capability |
+|-------|------------|
+| 0-9   | Open (white) |
+| 10-19 | Red |
+| 20-29 | Blue |
+| 30-39 | Green |
+| 40-127 | Split colors |
+| 128-255 | Rotation |
+
+## Fixture Modes
+
+Many fixtures support multiple operating modes:
+
+```cpp
+class QLCFixtureMode {
+    QString m_name;                  // e.g., "16-bit", "Basic", "Extended"
+    QVector<QLCChannel*> m_channels; // Channels in this mode
+    QList<QLCFixtureHead> m_heads;   // Heads (for multi-head fixtures)
+    QLCPhysical m_physical;          // Physical dimensions, power, etc.
+};
+```
+
+### Why Multiple Modes?
+
+- **Channel count**: Basic mode (8 channels) vs Extended mode (20 channels)
+- **Precision**: 8-bit vs 16-bit control
+- **Feature sets**: Simple operation vs advanced effects
+
+<Note>
+Always select the mode that matches your fixture's configuration. Using the wrong mode will result in incorrect control.
+</Note>
+
+## Fixture Heads
+
+For multi-head fixtures (LED bars, pixel tubes), each head is a controllable unit:
+
+```cpp
+class QLCFixtureHead {
+    QVector<quint32> m_channels;  // Channels controlled by this head
+    
+    // Get RGB channel numbers for this head
+    QVector<quint32> rgbChannels() const;
+    
+    // Get pan/tilt channel numbers
+    quint32 panChannel() const;
+    quint32 tiltChannel() const;
+};
+```
+
+Example: 4-head LED bar
+- Head 1: Channels 0-3 (RGBW)
+- Head 2: Channels 4-7 (RGBW)  
+- Head 3: Channels 8-11 (RGBW)
+- Head 4: Channels 12-15 (RGBW)
+
+## Generic Fixtures
+
+### Generic Dimmer
+
+For simple intensity control without a specific definition:
+
+```cpp
+QLCFixtureDef *def = fixture->genericDimmerDef(4);  // 4 channels
+QLCFixtureMode *mode = fixture->genericDimmerMode(def, 4);
+fixture->setFixtureDefinition(def, mode);
+```
+
+### Generic RGB Panel
+
+For custom LED pixel arrays:
+
+```cpp
+// 10 pixels, RGB order, 8-bit
+QLCFixtureDef *def = fixture->genericRGBPanelDef(10, RGB, false);
+QLCFixtureMode *mode = fixture->genericRGBPanelMode(def, RGB, false, 100, 10);
+```
+
+Supported color orders: RGB, BGR, BRG, GBR, GRB, RBG, RGBW
+
+## Channel Behavior Customization
+
+### Exclude from Fade
+
+Some channels shouldn't fade (e.g., gobos, shutters):
+
+```cpp
+fixture->setChannelCanFade(3, false);  // Channel 3 won't fade
+```
+
+### Force HTP/LTP
+
+Override default channel behavior:
+
+```cpp
+QList<int> htpChannels = {0, 1};  // Force channels 0,1 to HTP
+fixture->setForcedHTPChannels(htpChannels);
+
+QList<int> ltpChannels = {2};     // Force channel 2 to LTP
+fixture->setForcedLTPChannels(ltpChannels);
+```
+
+### Channel Modifiers
+
+Apply custom transformations to channel values:
+
+```cpp
+ChannelModifier *modifier = new ChannelModifier();
+modifier->setName("Invert");
+modifier->addPoint(0, 255);
+modifier->addPoint(255, 0);
+
+fixture->setChannelModifier(5, modifier);  // Invert channel 5
+```
+
+## Position Control
+
+For moving heads and scanners:
+
+```cpp
+// Pan/Tilt in degrees
+QList<SceneValue> values = fixture->positionToValues(
+    QLCChannel::Pan,   // Channel type
+    180.0,             // Degrees
+    false              // Absolute (not relative)
+);
+
+// Returns SceneValue for MSB and LSB channels
+// Automatically handles 8-bit vs 16-bit control
+```
+
+## Practical Example
+
+```cpp
+// Create a fixture instance
+Fixture *movingHead = new Fixture(doc);
+movingHead->setName("Stage Left Mover");
+
+// Set location in DMX space
+movingHead->setUniverse(0);
+movingHead->setAddress(0);  // Channels 1-20 in UI
+
+// Load fixture definition
+QLCFixtureDef *def = fixtureDefCache->fixtureDef("Chauvet", "Intimidator");
+QLCFixtureMode *mode = def->mode("16-bit");  // 20 channels
+
+if (def && mode) {
+    movingHead->setFixtureDefinition(def, mode);
+}
+
+// Add to document
+doc->addFixture(movingHead);
+```
+
+## Working with Fixture Data
+
+### Query Fixture Information
+
+```cpp
+// Get specific channel types
+quint32 dimmerCh = fixture->channel(QLCChannel::Intensity);
+QVector<quint32> rgbChs = fixture->rgbChannels(0);  // Head 0
+
+// Get channel information
+const QLCChannel *ch = fixture->channel(0);
+qDebug() << ch->name() << ch->group();
+
+// Check fixture type
+if (fixture->type() == QLCFixtureDef::MovingHead) {
+    // Handle pan/tilt
+}
+```
+
+### Monitor Fixture Values
+
+```cpp
+// Store current DMX values
+bool changed = fixture->setChannelValues(universeData);
+
+if (changed) {
+    // Read individual channel
+    uchar value = fixture->channelValueAt(0);
+    
+    // Get all values
+    QByteArray values = fixture->channelValues();
+}
+```
+
+## Best Practices
+
+1. **Use Fixture Definitions**: Always prefer official definitions over generic dimmers
+2. **Plan Addressing**: Leave gaps between fixtures for future expansion
+3. **Document Custom Fixtures**: Create proper definitions for specialized equipment
+4. **Test Modes**: Verify fixture modes match physical device settings
+5. **Group Logically**: Organize fixtures by location or function
+
+## Related Concepts
+
+- [Universes](/concepts/universes) - Understanding DMX universes and channel allocation
+- [Functions](/concepts/functions) - How to control fixtures with scenes and effects

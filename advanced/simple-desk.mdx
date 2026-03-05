@@ -1,0 +1,214 @@
+---
+title: Simple Desk
+description: Quick DMX channel control interface for live operation
+---
+
+The Simple Desk provides a fast and intuitive way to control DMX channels directly without creating scenes or functions. It's designed for quick setup and live control scenarios.
+
+## Overview
+
+Simple Desk acts as a DMX source that allows you to:
+- Control individual DMX channels with sliders
+- Override running functions for specific channels
+- Dump channel values to create new scenes
+- Use keypad commands for rapid channel control
+
+## Channel Control
+
+### Direct Value Setting
+
+The Simple Desk displays all 512 channels for the selected universe. You can adjust any channel by:
+
+1. Selecting a universe from the universe filter
+2. Moving the slider for the desired channel
+3. The channel value is immediately written to DMX output
+
+<Note>
+When Simple Desk controls a channel, it sets the **Override** flag. This means the Simple Desk value takes priority over other functions trying to control the same channel.
+</Note>
+
+### Channel Display
+
+Channels are displayed with the following information:
+- **Channel index**: Relative to the fixture (0-based)
+- **Current value**: DMX value (0-255)
+- **Override status**: Indicates if Simple Desk is controlling the channel
+- **Fixture reference**: Shows which fixture owns the channel
+
+```cpp
+// From simpledesk.cpp:200
+void SimpleDesk::setValue(quint32 fixtureID, uint channel, uchar value)
+{
+    // Set value with override flag
+    m_values[start + channel] = value;
+    fc->addFlag(FadeChannel::Override);
+}
+```
+
+## Keypad Commands
+
+Simple Desk includes a powerful keypad parser for rapid channel control. The keypad accepts commands like:
+
+- `1 @ 50` - Set channel 1 to 50%
+- `1 THRU 10 @ FULL` - Set channels 1-10 to full
+- `1 + 5 + 10 @ 0` - Set channels 1, 5, and 10 to zero
+
+<Info>
+The keypad maintains a history of your last 10 commands, accessible through the command history.
+</Info>
+
+### Command History
+
+The Simple Desk tracks your recent keypad commands:
+
+```cpp
+// From simpledesk.cpp:542
+m_keypadCommandHistory.prepend(command.toUpper());
+if (m_keypadCommandHistory.count() > MAX_KEYPAD_HISTORY)
+    m_keypadCommandHistory.removeLast();
+```
+
+## Dumping to Scene
+
+### Channel Selection
+
+As you adjust channels in Simple Desk, they're automatically added to a dump list. This allows you to:
+
+1. Adjust multiple channels to create a look
+2. Select which channel types to include (dimmer, color, position, etc.)
+3. Dump the selected channels to a new or existing scene
+
+### Dump Options
+
+```cpp
+// From simpledesk.cpp:506
+void SimpleDesk::dumpDmxChannels(QString name, quint32 mask, 
+                                  int sceneID, bool nonZeroOnly)
+{
+    m_functionManager->dumpDmxValues(m_dumpValues, fixtureList, 
+                                     mask, name, sceneID, nonZeroOnly);
+}
+```
+
+The dump functionality provides:
+- **Channel type filtering**: Choose dimmer, color, position, gobo, etc.
+- **Non-zero filtering**: Optionally exclude channels set to zero
+- **Scene selection**: Create new scene or update existing one
+
+<Steps>
+  <Step title="Adjust Channels">
+    Use sliders or keypad to set desired channel values
+  </Step>
+  <Step title="Select Channel Types">
+    Choose which channel types to include in the dump
+  </Step>
+  <Step title="Dump to Scene">
+    Click "Dump" and select target scene or create new one
+  </Step>
+</Steps>
+
+## Universe Management
+
+### Universe Selection
+
+Simple Desk operates on one universe at a time. The universe filter allows you to:
+- Switch between available universes
+- View only fixtures in the selected universe
+- Control channels 0-511 for that universe
+
+### Reset Operations
+
+**Reset Channel**: Removes Simple Desk control from a single channel and restores its default value.
+
+```cpp
+// From simpledesk.cpp:285
+void SimpleDesk::resetChannel(uint channel)
+{
+    m_values.remove(start + channel);
+    // Command queued for execution in writeDMX
+    m_commandQueue.append(QPair<int,quint32>(ResetChannel, start + channel));
+}
+```
+
+**Reset Universe**: Clears all Simple Desk overrides for the entire universe.
+
+```cpp
+// From simpledesk.cpp:258
+void SimpleDesk::resetUniverse(int universe)
+{
+    // Remove all values for this universe
+    // Reset channels to default values
+    m_commandQueue.append(QPair<int,quint32>(ResetUniverse, universe));
+}
+```
+
+## Integration with Web Access
+
+Simple Desk is fully accessible through the Web Access interface, allowing remote control via:
+
+- Web browser on any device
+- Touch-friendly interface for tablets
+- Multiple simultaneous connections
+
+```cpp
+// From simpledesk.h:110
+// Web access helpers (absolute address based)
+int getSlidersNumber() const;
+uchar getAbsoluteChannelValue(uint address) const;
+void setAbsoluteChannelValue(uint address, uchar value);
+```
+
+## DMX Source Implementation
+
+Simple Desk implements the `DMXSource` interface, making it part of the QLC+ engine's rendering pipeline:
+
+```cpp
+// From simpledesk.cpp:575
+void SimpleDesk::writeDMX(MasterTimer *timer, QList<Universe *> ua)
+{
+    // Process reset commands
+    // Write overridden channel values with faders
+    FadeChannel *fc = getFader(ua, uni, fxID, channel);
+    fc->setCurrent(value);
+    fc->setTarget(value);
+    fc->addFlag(FadeChannel::Override);
+}
+```
+
+<Note>
+Simple Desk uses the GenericFader system to ensure smooth value transitions and proper priority handling with other DMX sources.
+</Note>
+
+## Best Practices
+
+- **Live Control**: Use Simple Desk for quick adjustments during live shows
+- **Scene Creation**: Build scenes by adjusting channels and dumping to scenes
+- **Testing**: Quickly test fixture functionality without programming
+- **Override Control**: Temporarily override automated functions
+- **Keypad Efficiency**: Learn keypad commands for faster workflow
+
+## Technical Details
+
+### Channel Storage
+
+Simple Desk maintains a hash map of only the channels it's controlling:
+
+```cpp
+// From simpledesk.h:132
+// Only channels overridden by Simple Desk are stored
+QHash <uint,uchar> m_values;
+```
+
+This efficient approach means:
+- Minimal memory usage
+- Fast channel lookups
+- Easy to determine which channels are overridden
+
+### Thread Safety
+
+All channel operations are protected by mutex locks to ensure thread safety:
+
+```cpp
+// From simpledesk.cpp:241
+QMutexLocker locker(&m_mutex);
+```

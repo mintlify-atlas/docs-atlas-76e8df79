@@ -1,0 +1,501 @@
+---
+title: Frame Widgets
+description: Organize and group Virtual Console widgets using frame containers
+---
+
+Frame widgets are container elements that help organize and group other widgets in the Virtual Console. Frames provide visual organization, page management, and special behaviors like solo mode. They are implemented in `ui/src/virtualconsole/vcframe.h` and `vcframe.cpp`.
+
+## Overview
+
+Frames serve multiple purposes in Virtual Console:
+
+- **Organization**: Group related controls together visually
+- **Hierarchy**: Create nested widget structures
+- **Pages**: Implement multi-page interfaces
+- **Enable/Disable**: Control entire groups of widgets at once
+- **Solo Mode**: Ensure only one child function runs at a time (VCSoloFrame)
+
+Frames are unique among widgets because they can contain other widgets, making them the foundation of complex Virtual Console layouts.
+
+## Frame Types
+
+### Standard Frame
+
+Basic container for organizing widgets:
+
+```cpp
+class VCFrame : public VCWidget
+{
+    static const QSize defaultSize;
+};
+```
+
+Source: `vcframe.h:59-66`
+
+Standard frames:
+
+- Can contain any widget type
+- Support multipage mode
+- Can be enabled/disabled as a group
+- Provide visual grouping with borders
+- Can be collapsed to save space
+
+### Solo Frame
+
+Specialized frame with exclusive function control:
+
+```cpp
+class VCSoloFrame : public VCFrame
+{
+public:
+    bool soloframeMixing() const;
+    void setSoloframeMixing(bool soloframeMixing);
+    bool excludeMonitoredFunctions() const;
+    void setExcludeMonitoredFunctions(bool exclude);
+};
+```
+
+Source: `vcsoloframe.h:40-98`
+
+Solo frames ensure:
+
+- Only one child widget's function runs at a time
+- Starting a new function stops sibling functions
+- Useful for mutually exclusive lighting states
+- Optional mixing mode for overlapping functions
+
+Example use case:
+
+```
+Solo Frame: "Color Scenes"
+├── Button: Red Scene
+├── Button: Blue Scene
+└── Button: Green Scene
+```
+
+Activating "Blue Scene" automatically stops "Red Scene".
+
+## Frame Header
+
+Frames can display an optional header bar:
+
+```cpp
+void setHeaderVisible(bool enable);
+bool isHeaderVisible() const;
+void setCaption(const QString& text);
+```
+
+Source: `vcframe.h:111-113`, `vcframe.h:97`
+
+The header contains:
+
+- **Caption Label**: Frame title
+- **Collapse Button**: Hide/show frame contents
+- **Enable Button**: Enable/disable entire frame
+- **Page Controls**: Previous/next buttons for multipage frames
+
+<Note>
+The header is created through `createHeader()` which sets up a horizontal box layout containing all header components.
+</Note>
+
+## Collapsible Frames
+
+Frames can be collapsed to save screen space:
+
+```cpp
+bool isCollapsed() const;
+QSize originalSize() const;
+
+protected slots:
+    void slotCollapseButtonToggled(bool toggle);
+```
+
+Source: `vcframe.h:119-127`
+
+When collapsed:
+
+- Only the header is visible
+- Contents are hidden but preserved
+- Frame height is minimized
+- Original size is stored for restoration
+- Useful for temporary hiding of infrequently used controls
+
+## Enable/Disable State
+
+Frames can disable all child widgets:
+
+```cpp
+void setDisableState(bool disable) override;
+void setEnableButtonVisible(bool enable);
+bool isEnableButtonVisible() const;
+
+protected slots:
+    void slotEnableButtonClicked(bool checked);
+```
+
+Source: `vcframe.h:91`, `vcframe.h:115-136`
+
+Disabled frames:
+
+- Gray out all child widgets
+- Prevent child widgets from accepting input
+- Stop child functions when disabled
+- Provide enable button in header for quick toggle
+
+The disable state cascades to all children through the `setDisableState()` method.
+
+## Multipage Mode
+
+Frames support multiple pages of widgets:
+
+```cpp
+void setMultipageMode(bool enable);
+virtual bool multipageMode() const;
+void setTotalPagesNumber(int num);
+int totalPagesNumber() const;
+virtual int currentPage() const;
+void setPagesLoop(bool pagesLoop);
+bool pagesLoop() const;
+```
+
+Source: `vcframe.h:155-170`
+
+### Page Management
+
+Widgets are associated with specific pages:
+
+```cpp
+virtual void addWidgetToPageMap(VCWidget *widget);
+virtual void removeWidgetFromPageMap(VCWidget *widget);
+
+public slots:
+    void slotPreviousPage();
+    void slotNextPage();
+    void slotSetPage(int pageNum);
+
+signals:
+    void pageChanged(int pageNum);
+
+protected:
+    QMap<VCWidget *, int> m_pagesMap;
+```
+
+Source: `vcframe.h:173-194`
+
+How it works:
+
+1. Each child widget is assigned to one or more pages
+2. Only widgets for current page are shown
+3. Changing pages hides/shows appropriate widgets
+4. Page controls appear in frame header
+5. Optional looping from last to first page
+
+### Page Controls
+
+The multipage frame header includes:
+
+- **Previous Button**: Go to previous page
+- **Page Combo**: Dropdown showing current page number
+- **Next Button**: Go to next page
+
+These are implemented as:
+
+```cpp
+protected:
+    QToolButton *m_nextPageBtn, *m_prevPageBtn;
+    QComboBox *m_pageCombo;
+```
+
+Source: `vcframe.h:187-188`
+
+### Page Shortcuts
+
+Keyboard shortcuts for quick page navigation:
+
+```cpp
+QList<VCFramePageShortcut *> shortcuts() const;
+void addShortcut();
+void setShortcuts(QList<VCFramePageShortcut *> shortcuts);
+void resetShortcuts();
+```
+
+Source: `vcframe.h:158-161`
+
+Page shortcuts allow:
+
+- Jump directly to specific pages
+- Fast page switching during shows
+- External input mapping to page changes
+
+## Keyboard Shortcuts
+
+Frames support several keyboard shortcuts:
+
+```cpp
+void setEnableKeySequence(const QKeySequence& keySequence);
+QKeySequence enableKeySequence() const;
+
+void setNextPageKeySequence(const QKeySequence& keySequence);
+QKeySequence nextPageKeySequence() const;
+
+void setPreviousPageKeySequence(const QKeySequence& keySequence);
+QKeySequence previousPageKeySequence() const;
+```
+
+Source: `vcframe.h:223-239`
+
+Shortcut types:
+
+- **Enable/Disable**: Toggle frame enabled state
+- **Next Page**: Advance to next page
+- **Previous Page**: Go to previous page
+- **Page Shortcuts**: Jump to specific page numbers
+
+## External Input
+
+Frames respond to external input on multiple channels:
+
+```cpp
+static const quint8 nextPageInputSourceId;
+static const quint8 previousPageInputSourceId;
+static const quint8 enableInputSourceId;
+static const quint8 shortcutsBaseInputSourceId;
+```
+
+Source: `vcframe.h:69-72`
+
+Each input source can be mapped to:
+
+- MIDI notes/controllers
+- OSC messages
+- ArtNet/sACN channels
+- Other input protocols
+
+Input is processed through:
+
+```cpp
+void updateFeedback() override;
+
+protected slots:
+    void slotInputValueChanged(quint32 universe, quint32 channel, uchar value) override;
+```
+
+Source: `vcframe.h:255-259`
+
+## Solo Frame Behavior
+
+Solo frames implement special function control:
+
+### Solo Mixing
+
+```cpp
+bool soloframeMixing() const;
+void setSoloframeMixing(bool soloframeMixing);
+```
+
+Source: `vcsoloframe.h:92-93`
+
+- **Mixing Off**: Only one function runs (strict solo)
+- **Mixing On**: Multiple functions can run but new ones still stop old ones
+
+### Exclude Monitored
+
+```cpp
+bool excludeMonitoredFunctions() const;
+void setExcludeMonitoredFunctions(bool exclude);
+```
+
+Source: `vcsoloframe.h:97-98`
+
+When enabled:
+
+- Functions started outside solo frame are not stopped
+- Only functions controlled by solo frame children are affected
+- Useful when mixing solo frame with other controls
+
+### Function Connection
+
+Solo frames connect to child widget signals:
+
+```cpp
+void updateChildrenConnection(bool doConnect);
+
+protected slots:
+    void slotWidgetFunctionStarting(quint32 fid, qreal intensity);
+```
+
+Source: `vcsoloframe.h:70`, `vcsoloframe.h:86`
+
+The solo behavior:
+
+1. Child widget emits `functionStarting()` signal
+2. Solo frame receives signal in `slotWidgetFunctionStarting()`
+3. Solo frame stops all other children's functions
+4. New function starts
+
+## Submaster Integration
+
+Frames can contain sliders in submaster mode:
+
+```cpp
+protected slots:
+    void slotSubmasterValueChanged(qreal value);
+
+public:
+    void updateSubmasterValue();
+```
+
+Source: `vcframe.h:206-210`
+
+This allows:
+
+- Group intensity control for child widgets
+- Submasters controlling widgets within frame
+- Cascading intensity adjustments
+
+## Frame Appearance
+
+Frames support standard widget appearance options:
+
+### Colors
+
+```cpp
+void setForegroundColor(const QColor& color) override;
+QColor foregroundColor() const override;
+```
+
+Source: `vcframe.h:106-109`
+
+- Frame caption color
+- Header background color
+- Border color (if frame style is set)
+
+### Font
+
+```cpp
+void setFont(const QFont& font) override;
+QFont font() const override;
+```
+
+Source: `vcframe.h:100-103`
+
+Applied to frame caption in header.
+
+### Frame Style
+
+Inherited from `VCWidget`:
+
+- **None**: No visible border
+- **Sunken**: 3D inset appearance
+- **Raised**: 3D raised appearance
+
+## XML Persistence
+
+Frame configuration example:
+
+```xml
+<Frame ID="2" Caption="Lighting Scenes">
+    <WindowState X="10" Y="10" Width="300" Height="400"/>
+    <Appearance>
+        <FrameStyle>Sunken</FrameStyle>
+        <Font>Arial,12</Font>
+        <ForegroundColor>#FFFFFF</ForegroundColor>
+    </Appearance>
+    <AllowChildren>true</AllowChildren>
+    <ShowHeader>true</ShowHeader>
+    <ShowEnableButton>true</ShowEnableButton>
+    <Disabled>false</Disabled>
+    <Multipage PagesNum="3" CurrentPage="0" PagesLoop="false">
+        <Next Key="N" Universe="0" Channel="10"/>
+        <Previous Key="P" Universe="0" Channel="11"/>
+    </Multipage>
+    <!-- Child widgets here -->
+</Frame>
+```
+
+Solo frame XML:
+
+```xml
+<SoloFrame ID="3" Caption="Color Selection">
+    <!-- Same structure as Frame -->
+    <Mixing>false</Mixing>
+    <ExcludeMonitored>true</ExcludeMonitored>
+    <!-- Child widgets here -->
+</SoloFrame>
+```
+
+Key XML elements:
+
+- `AllowChildren`: Must be true for frames
+- `ShowHeader`: Display frame header
+- `ShowEnableButton`: Show enable/disable button
+- `Disabled`: Initial disable state
+- `Multipage`: Multi-page configuration
+- `Mixing`: Solo frame mixing mode
+- `ExcludeMonitored`: Solo frame monitored function handling
+
+## Common Patterns
+
+### Scene Bank
+
+```
+Frame: "Scenes"
+├── Button: Scene 1
+├── Button: Scene 2
+├── Button: Scene 3
+└── Button: Scene 4
+```
+
+Use standard frame for visual grouping.
+
+### Color Selector
+
+```
+Solo Frame: "Colors" (mixing=false)
+├── Button: Red
+├── Button: Green
+├── Button: Blue
+└── Button: White
+```
+
+Use solo frame to ensure only one color at a time.
+
+### Multi-page Console
+
+```
+Multipage Frame: "Main Control" (3 pages)
+  Page 1: Dimmers
+  ├── Slider: Stage Left
+  ├── Slider: Stage Right
+  └── Slider: Backlight
+  Page 2: Colors  
+  ├── Button: Red Scene
+  ├── Button: Blue Scene
+  └── Button: Green Scene
+  Page 3: Effects
+  ├── Button: Strobe
+  ├── Button: Chase 1
+  └── Button: Chase 2
+```
+
+Use multipage frame to organize many controls in limited space.
+
+## Next Steps
+
+<Steps>
+  <Step title="Create a Frame">
+    Add a frame to organize related controls together
+  </Step>
+  <Step title="Add Child Widgets">
+    Drag buttons, sliders, and other widgets into the frame
+  </Step>
+  <Step title="Configure Header">
+    Set caption, enable buttons, and appearance options
+  </Step>
+  <Step title="Try Multipage Mode">
+    Create multiple pages to organize complex layouts
+  </Step>
+  <Step title="Use Solo Frame">
+    Implement mutually exclusive lighting states
+  </Step>
+</Steps>

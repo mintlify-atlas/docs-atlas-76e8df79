@@ -1,80 +1,496 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start Guide
+description: Get started with QLC+ by creating your first lighting scene in minutes
 ---
 
-## Get started in three steps
+# Quick Start Guide
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will walk you through creating your first lighting scene in QLC+. You'll learn the basic workflow of adding fixtures, creating functions, and controlling them through the Virtual Console.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+Before starting this tutorial, make sure you have [installed QLC+](/installation) on your system and familiarized yourself with the main window interface.
 </Note>
+
+## Understanding the Workflow
+
+The typical QLC+ workflow follows these steps:
+
+1. **Add Fixtures** - Define your lighting equipment in the Fixture Manager
+2. **Create Functions** - Program scenes, chasers, and effects in the Function Manager
+3. **Build Controls** - Create buttons and controls in the Virtual Console
+4. **Operate** - Switch to operate mode and run your light show
+
+<Steps>
+  <Step title="Open the Fixture Manager">
+    The Fixture Manager is the heart of QLC+'s fixture-oriented architecture. This is where you define all the lighting equipment you want to control.
+    
+    **Click the <Icon icon="lightbulb" /> Fixture Manager icon** on the main toolbar to open the Fixture Manager panel.
+    
+    You'll see:
+    - **Left side:** List of fixtures in your workspace (currently empty)
+    - **Right side:** Information about the selected fixture
+    - **Toolbar:** Buttons to add, remove, and configure fixtures
+    
+    <Info>
+    The Fixture Manager toolbar contains buttons for adding fixtures, removing them, configuring properties, grouping fixtures, and importing/exporting fixture lists.
+    </Info>
+  </Step>
+  
+  <Step title="Add Your First Fixture">
+    Let's add a fixture to your workspace.
+    
+    1. **Click the Add Fixture button** (plus icon) in the Fixture Manager toolbar
+    2. You'll see the **Add Fixtures** dialog with:
+       - **Left panel:** List of fixture manufacturers and models
+       - **Right panel:** Details about the selected fixture
+    
+    ### Select a Fixture
+    
+    For this tutorial, let's use a simple scanner:
+    
+    1. Expand the **"Futurelight"** folder in the manufacturers list
+    2. Select **"DJScan250"**
+    3. Notice the **Channels** field shows this fixture uses **6 DMX channels**
+    
+    <Tip>
+    If you have your own fixtures, search for your manufacturer and model. QLC+ includes hundreds of fixture definitions. If your fixture isn't listed, you can create a custom definition using the Fixture Definition Editor.
+    </Tip>
+    
+    ### Configure Fixture Properties
+    
+    Before adding the fixture, configure these properties:
+    
+    - **Name:** Accept the default or enter a custom name (e.g., "Scanner 1")
+    - **Mode:** Select the operational mode if multiple are available (DJScan250 has only "Mode 1")
+    - **Address:** Set the DMX address to **1** (this should match your physical fixture's address)
+    - **Universe:** Keep it at **1** (each universe typically has its own DMX cable)
+    - **Amount:** Set to **1** (we're adding one fixture)
+    - **Address gap:** Leave at **0** (no gaps between fixtures)
+    
+    <Note>
+    **DMX Addressing:** A DMX address is the starting channel for a fixture. The DJScan250 uses 6 channels, so it occupies channels 1-6. The next fixture should start at address 7 to avoid overlap.
+    </Note>
+    
+    **Click OK** to add the fixture to your workspace.
+  </Step>
+  
+  <Step title="Verify the Fixture">
+    Back in the Fixture Manager, you should now see:
+    
+    - **Left panel:** Your newly added "DJScan250" fixture
+    - **Right panel:** Fixture details including name, manufacturer, model, and channel assignments
+    
+    You can click the Configure button (gear icon) at any time to modify the fixture's address or universe.
+  </Step>
+  
+  <Step title="Open the Function Manager">
+    Functions are the programs that control your fixtures. The most basic function is a **Scene**, which sets specific channel values for your fixtures.
+    
+    **Click the <Icon icon="layer-group" /> Function Manager icon** on the main toolbar.
+    
+    The Function Manager allows you to create various types of functions:
+    - **Scene** - Static lighting states
+    - **Chaser** - Sequences of scenes or functions
+    - **EFX** - Automated effects (circles, spirals, etc.)
+    - **Collection** - Groups of functions triggered together
+    - **RGB Matrix** - Pixel effects for LED matrices
+    - **Script** - Programmatic control
+  </Step>
+  
+  <Step title="Create Your First Scene">
+    Let's create a scene that sets our fixture to a specific color and gobo.
+    
+    1. **Click the Scene button** (scene icon) in the Function Manager toolbar
+    2. The **Scene Editor** opens with:
+       - **General tab:** Scene properties and settings
+       - **Fixtures list:** Currently empty
+       - **Channel groups list:** For advanced grouping
+    
+    ### Add Fixture to Scene
+    
+    1. **Click the Add Fixtures button** (plus icon) in the Scene Editor
+    2. Select **"DJScan250"** from the list
+    3. **Click OK**
+    
+    You'll notice a new tab appears labeled **"DJScan250"** next to the General tab.
+    
+    ### Configure Channel Values
+    
+    1. **Click the "DJScan250" tab** to see the fixture's channels
+    2. You'll see 6 channels with sliders and buttons (initially disabled)
+    3. Each channel has a checkbox above it to enable/disable it in the scene
+    
+    Let's set up a scene with color, gobo, and shutter:
+    
+    **Enable channels 3, 4, and 6** by clicking their checkboxes:
+    - **Channel 3:** Color wheel
+    - **Channel 4:** Gobo selection
+    - **Channel 6:** Shutter/intensity
+    
+    <Info>
+    Unchecked channels won't be affected by this scene. This lets you create scenes that only control specific features (e.g., only color) without changing other settings.
+    </Info>
+    
+    ### Set Color (Channel 3)
+    
+    1. **Click the color wheel button** on channel 3
+    2. Navigate to **"Orange"**
+    3. Select value **"80"** from the submenu
+    4. Notice the slider moves to position 80
+    
+    ### Set Gobo (Channel 4)
+    
+    1. **Click the gobo button** on channel 4
+    2. Select **"Gobo 7"**
+    3. Choose value **"126"**
+    
+    ### Set Shutter (Channel 6)
+    
+    1. **Click the intensity button** on channel 6
+    2. Select **"Shutter open"**
+    3. Choose value **"255"** (fully open)
+    
+    <Tip>
+    If you have DMX output configured, you'll see these changes in real-time on your fixtures as you edit values!
+    </Tip>
+  </Step>
+  
+  <Step title="Name and Configure the Scene">
+    Give your scene a descriptive name and set timing options.
+    
+    ### Set Scene Name
+    
+    1. **Click the "General" tab** to return to the scene properties
+    2. In the **Scene name** field, enter: **"DJScan250 Orange Gobo 7"**
+    
+    ### Configure Fade Time
+    
+    Let's add a smooth fade to our scene:
+    
+    1. **Click the Speed button** (clock icon) in the Scene Editor toolbar
+    2. The Speed Dial tool appears with fade time controls
+    3. Set **Fade In** to **5 seconds** using the dial or by typing "5" in the seconds field
+    4. Leave **Fade Out** at the default
+    5. **Click the Speed button** again to close the tool
+    
+    <Note>
+    Fade times create smooth transitions between lighting states. A 5-second fade in means the fixture will gradually change from its current state to the scene's values over 5 seconds.
+    </Note>
+    
+    **Close the Scene Editor** (or click OK) to save your scene.
+  </Step>
+  
+  <Step title="Create a Second Scene">
+    Let's create another scene to switch between. This will demonstrate how to create contrast in your lighting.
+    
+    1. **Click the Scene button** again in the Function Manager
+    2. **Add the "DJScan250" fixture** to the new scene
+    3. **Click the "DJScan250" tab**
+    4. **Enable channels 3, 4, and 6** again
+    5. This time, **set all three channels to 0** (using the sliders or typing 0)
+    6. **Return to the General tab**
+    7. **Name the scene:** **"DJScan250 Zero"**
+    8. **Close the Scene Editor**
+    
+    You now have two scenes in your Function Manager:
+    - "DJScan250 Orange Gobo 7" (active lighting state)
+    - "DJScan250 Zero" (blackout/reset state)
+  </Step>
+  
+  <Step title="Open the Virtual Console">
+    The Virtual Console is your control interface. This is where you create buttons, sliders, and other widgets to trigger your functions during operation.
+    
+    **Click the <Icon icon="grid" /> Virtual Console button** on the main toolbar.
+    
+    You'll see an empty panel with:
+    - **Menu bar:** File, Edit, Add, Tools, and other options
+    - **Toolbar:** Quick access to add widgets and edit properties
+    - **Empty workspace:** Where you'll build your control interface
+    
+    The Virtual Console supports many widget types including buttons, sliders, XY pads, frames, cue lists, and more.
+  </Step>
+  
+  <Step title="Create Control Buttons">
+    Let's create buttons to trigger our scenes.
+    
+    ### Add First Button
+    
+    1. **Click the Button icon** (button widget) in the Virtual Console toolbar
+    2. An empty button appears in the virtual console
+    3. **Double-click the button** (or click the Edit icon) to open the button configuration
+    
+    ### Configure First Button
+    
+    In the **Button Configuration** dialog:
+    
+    1. **Click the Attach Function button** (chain link icon)
+    2. The **Select Function** dialog appears showing your scenes
+    3. **Double-click "DJScan250 Orange Gobo 7"** to attach it
+    4. Optionally, enter a **Button label** (e.g., "Orange Gobo")
+    5. **Click OK** to save
+    
+    ### Style the Button
+    
+    Let's make the button visually distinctive:
+    
+    1. **Click on the button** to select it
+    2. **Click the Color icon** (paint bucket) in the toolbar
+    3. **Choose an orange color** from the color picker
+    4. **Click OK**
+    5. **Resize the button** by dragging the corner handle if needed
+    6. **Move the button** by dragging it to a convenient position
+    
+    ### Add Second Button
+    
+    1. **Click the Button icon** again to add another button
+    2. **Double-click the new button** to configure it
+    3. **Attach the "DJScan250 Zero" function**
+    4. **Set a button label** (e.g., "Reset" or "Blackout")
+    5. **Click OK**
+    6. **Select the button** and click the Color icon
+    7. **Set the background color to black** and **foreground (text) color to white**
+    8. **Position the button** next to the first one
+    
+    <Tip>
+    You can create complex control layouts with multiple buttons, sliders, and frames. Organize related controls into frames and use multiple pages for large shows.
+    </Tip>
+  </Step>
+  
+  <Step title="Test Your Light Show">
+    Now for the exciting part - let's see your lighting control in action!
+    
+    ### Open the DMX Monitor
+    
+    Before operating, let's watch the DMX output:
+    
+    **Click the <Icon icon="tv" /> Monitor button** on the main toolbar.
+    
+    The DMX Monitor shows:
+    - **Universe tabs:** Select which universe to view
+    - **Channel numbers:** 1-512 for each universe
+    - **Channel values:** Current value (0-255) for each channel
+    - **Fixture labels:** Your fixtures shown as bars over their channel ranges
+    
+    You should see "DJScan250" labeled over channels 001-006.
+    
+    ### Switch to Operate Mode
+    
+    **Click the <Icon icon="play" /> Operate mode button** (play icon) in the top-right corner of the main toolbar.
+    
+    The interface changes:
+    - Edit controls become locked
+    - Virtual Console buttons become active
+    - You can now trigger your functions
+    
+    <Warning>
+    In operate mode, you cannot edit fixtures, functions, or widgets. Switch back to Design mode (edit icon) to make changes.
+    </Warning>
+    
+    ### Run Your Scenes
+    
+    1. **Watch the DMX Monitor** while you click buttons
+    2. **Click the "Orange Gobo" button** on the Virtual Console
+    3. You should see:
+       - The button lights up (indicates the function is running)
+       - Channel 3 gradually fades to 80
+       - Channel 4 fades to 126
+       - Channel 6 fades to 255
+       - The fade takes 5 seconds (as we configured)
+    4. **Click the "Reset" button**
+    5. You should see all three channels fade to 0
+    
+    <Info>
+    If you have physical DMX fixtures connected, they should respond to these changes! If you only have the Dummy output plugin configured, the DMX Monitor is the best way to verify your programming.
+    </Info>
+    
+    ### Stopping Functions
+    
+    - **Click a running button again** to stop the function
+    - The button stops flashing and the function releases its channels
+    - Be careful not to run conflicting functions simultaneously
+  </Step>
+</Steps>
+
+## Congratulations!
+
+You've successfully created your first QLC+ lighting scene! You now understand the basic workflow:
+
+<CardGroup cols={2}>
+  <Card title="Fixture Manager" icon="lightbulb">
+    Define your lighting equipment and DMX addressing
+  </Card>
+  
+  <Card title="Function Manager" icon="layer-group">
+    Create scenes, chasers, and effects to control fixtures
+  </Card>
+  
+  <Card title="Virtual Console" icon="grid">
+    Build custom control interfaces with buttons and widgets
+  </Card>
+  
+  <Card title="Operate Mode" icon="play">
+    Run your light show in real-time
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+Now that you understand the basics, explore these more advanced features:
+
+### Configure DMX Output
+
+If you haven't already, set up your DMX interface:
+
+1. Go to the **Inputs/Outputs** tab
+2. Select your DMX interface plugin (Art-Net, E1.31, DMX USB, etc.)
+3. Configure universe mappings
+4. Test output using the DMX Monitor
+
+<Tip>
+Refer to the [Input/Output mapping guide](https://docs.qlcplus.org/v4/howto-input-output-mapping.html) for detailed instructions on configuring various DMX interfaces.
+</Tip>
+
+### Create More Complex Functions
+
+<AccordionGroup>
+  <Accordion title="Chasers - Sequential Effects">
+    Create a **Chaser** to run multiple scenes in sequence:
+    
+    1. Click the Chaser button in Function Manager
+    2. Add multiple scenes to the chaser steps
+    3. Configure step timing (fade in, hold, fade out)
+    4. Set the chaser to loop infinitely or run once
+    5. Attach the chaser to a Virtual Console button
+    
+    Chasers are perfect for automated sequences like color changes or movement patterns.
+  </Accordion>
+  
+  <Accordion title="EFX - Automated Movement">
+    Use **EFX** functions for automated pan/tilt movement:
+    
+    1. Click the EFX button in Function Manager
+    2. Add moving head fixtures
+    3. Choose a pattern (circle, square, spiral, etc.)
+    4. Adjust size, rotation, and speed
+    5. Preview the movement path
+    
+    EFX functions create professional-looking movement effects with minimal programming.
+  </Accordion>
+  
+  <Accordion title="RGB Matrix - LED Pixel Effects">
+    Control **LED pixel strips and matrices** with RGB Matrix functions:
+    
+    1. Create a Fixture Group for your LED pixels
+    2. Click the RGB Matrix button in Function Manager
+    3. Select a script (text, plasma, strobe, etc.)
+    4. Configure colors and animation speed
+    5. Preview the effect in the editor
+    
+    RGB Matrices turn LED strips into dynamic displays with text, animations, and patterns.
+  </Accordion>
+  
+  <Accordion title="Show Manager - Timeline-Based Control">
+    Create **synchronized shows** with audio and lighting:
+    
+    1. Open the Show Manager
+    2. Import an audio track
+    3. Place scenes, chasers, and EFX on the timeline
+    4. Synchronize lighting cues with the music
+    5. Play back the entire show automatically
+    
+    Perfect for theatrical productions and performances with consistent timing.
+  </Accordion>
+</AccordionGroup>
+
+### Enhance Your Virtual Console
+
+<CardGroup cols={2}>
+  <Card title="Sliders" icon="sliders">
+    Add slider widgets to control intensity, speed, or individual channels in real-time
+  </Card>
+  
+  <Card title="XY Pads" icon="bullseye">
+    Control pan and tilt of moving heads with touchscreen-friendly XY pad widgets
+  </Card>
+  
+  <Card title="Cue Lists" icon="list">
+    Create theater-style cue lists for step-by-step show control
+  </Card>
+  
+  <Card title="Frames" icon="square">
+    Organize controls into frames and create multi-page layouts for complex shows
+  </Card>
+</CardGroup>
+
+### Input Control
+
+Take control to the next level with external input devices:
+
+- **MIDI Controllers:** Connect MIDI devices to trigger functions and control faders
+- **OSC Devices:** Use tablets and smartphones as wireless controllers
+- **HID Devices:** Support USB game controllers and custom hardware
+- **Keyboard Shortcuts:** Assign hotkeys to buttons for quick triggering
+
+### Web Interface
+
+Control QLC+ remotely:
+
+1. Enable the web interface: `qlcplus -w` (or -web option)
+2. Access from any browser: `http://localhost:9999`
+3. Control your show from tablets, phones, or remote computers
+4. Perfect for Raspberry Pi headless installations
+
+## Tips for Success
+
+<Tip>
+**Save frequently!** Save your workspace regularly using **File > Save Workspace** or Ctrl+S (Cmd+S on macOS).
+</Tip>
+
+<Tip>
+**Test before the show:** Always test your programming with the actual fixtures before a live event. DMX timing and fixture response can vary.
+</Tip>
+
+<Tip>
+**Use descriptive names:** Give fixtures, functions, and buttons clear, descriptive names. "Scanner 1 Red" is better than "Scene 1".
+</Tip>
+
+<Tip>
+**Organize with groups:** Use fixture groups and virtual console frames to keep complex setups organized.
+</Tip>
+
+<Tip>
+**Learn keyboard shortcuts:** Speed up your workflow by learning common shortcuts like F11 (fullscreen), F12 (operate mode), and Tab (switch panels).
+</Tip>
+
+## Getting Help
+
+Need more assistance?
+
+<CardGroup cols={2}>
+  <Card title="Documentation" icon="book" href="https://docs.qlcplus.org/">
+    Comprehensive guides for all QLC+ features
+  </Card>
+  
+  <Card title="Forum" icon="comments" href="https://www.qlcplus.org/forum/">
+    Community support and discussions
+  </Card>
+  
+  <Card title="Video Tutorials" icon="video" href="https://www.youtube.com/watch?v=I9bccwcYQpM&list=PLHT-wIriuitDiW4A9oKSDr__Z_jcmMVdi">
+    Watch step-by-step video guides
+  </Card>
+  
+  <Card title="GitHub Issues" icon="github" href="https://github.com/mcallegari/qlcplus/issues">
+    Report bugs and request features
+  </Card>
+</CardGroup>
+
+## Example Workspace
+
+Want to explore more? QLC+ includes sample workspaces to learn from:
+
+- Check the **Sample** files in your QLC+ installation
+- Load examples from **File > Open Workspace**
+- Study how different functions and widgets are configured
+- Experiment by modifying the examples
+
+Happy lighting! 🎭✨

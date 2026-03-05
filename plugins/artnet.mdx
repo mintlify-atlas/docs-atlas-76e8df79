@@ -1,0 +1,359 @@
+---
+title: Art-Net Plugin
+description: Industry-standard DMX over Ethernet protocol support
+---
+
+## Overview
+
+The Art-Net plugin implements the Art-Net protocol for transmitting and receiving DMX512 data over Ethernet networks. Art-Net is an industry-standard protocol widely supported by lighting consoles, controllers, and fixtures.
+
+<Note>
+The plugin name as reported by QLC+ is **"Art-Net"**
+</Note>
+
+## Capabilities
+
+The Art-Net plugin supports:
+
+- **Output** - Send DMX data over network
+- **Input** - Receive DMX data from network nodes
+- **Infinite** - Unlimited universes
+- **RDM** - Remote Device Management (experimental)
+
+## Protocol Specifications
+
+- **Protocol:** Art-Net (UDP-based)
+- **Port:** 6454 (UDP)
+- **Universe Range:** 0-32767 (per Art-Net spec)
+- **Channels per Universe:** 512
+
+```cpp
+#define ARTNET_PORT 6454
+```
+
+## Network Interface Structure
+
+The plugin creates a controller for each network interface:
+
+```cpp
+typedef struct _aio
+{
+    QNetworkInterface iface;          // Network interface
+    QNetworkAddressEntry address;     // IP address configuration
+    ArtNetController* controller;     // Controller instance
+} ArtNetIO;
+```
+
+## Configuration
+
+### Network Interface Detection
+
+The plugin automatically detects all available network interfaces at startup. You can configure the interface wait time:
+
+```cpp
+#define SETTINGS_IFACE_WAIT_TIME "ArtNetPlugin/ifacewait"
+```
+
+<Accordion title="Why Interface Wait Time?">
+Some systems need time for network interfaces to become fully ready after QLC+ starts. The default wait time ensures interfaces are properly initialized before the plugin attempts to bind to them.
+</Accordion>
+
+### Custom Parameters
+
+Art-Net supports several custom parameters:
+
+```cpp
+#define ARTNET_INPUTUNI "inputUni"       // Input universe number
+#define ARTNET_OUTPUTIP "outputIP"       // Output IP address  
+#define ARTNET_OUTPUTUNI "outputUni"     // Output universe number
+#define ARTNET_TRANSMITMODE "transmitMode" // Transmission mode
+```
+
+### Setting Parameters
+
+```cpp
+void setParameter(quint32 universe, quint32 line, 
+                  Capability type, QString name, QVariant value);
+```
+
+**Example parameters:**
+- `outputIP` - Target IP address (broadcast or unicast)
+- `outputUni` - Art-Net universe number (0-32767)
+- `inputUni` - Universe number to listen for
+- `transmitMode` - Standard, Full, or Partial transmission
+
+## Output Configuration
+
+### Opening an Output
+
+```cpp
+bool openOutput(quint32 output, quint32 universe);
+```
+
+When you open an output line:
+1. The plugin creates or reuses an Art-Net controller for the network interface
+2. Configures the output universe mapping
+3. Sets up UDP socket for transmission
+
+### Output Modes
+
+The Art-Net controller supports three transmission modes:
+
+```cpp
+enum TransmissionMode { 
+    Standard,  // Send only changed channels
+    Full,      // Always send full 512-channel universe
+    Partial    // Send only up to highest changed channel
+};
+```
+
+<Tabs>
+  <Tab title="Standard Mode">
+    Sends DMX data only when channel values change. Most efficient for typical use.
+    
+    **Best for:** Normal operation, conserving bandwidth
+  </Tab>
+  <Tab title="Full Mode">
+    Always sends all 512 channels, even if unchanged.
+    
+    **Best for:** Compatibility with devices requiring continuous data
+  </Tab>
+  <Tab title="Partial Mode">
+    Sends channels from 1 to the highest changed channel.
+    
+    **Best for:** Reducing bandwidth when using few channels
+  </Tab>
+</Tabs>
+
+### Sending Data
+
+```cpp
+void writeUniverse(quint32 universe, quint32 output, 
+                   const QByteArray& data, bool dataChanged);
+```
+
+The plugin:
+1. Retrieves the Art-Net controller for the output line
+2. Calls `sendDmx()` with universe and data
+3. Controller packetizes and transmits via UDP
+
+### Broadcast vs Unicast
+
+You can configure the output IP address:
+
+**Broadcast (default):**
+```
+2.255.255.255  // Subnet broadcast
+255.255.255.255 // Limited broadcast
+```
+
+**Unicast:**
+```
+192.168.1.100  // Specific device IP
+```
+
+<Note>
+Unicast is more efficient and reduces network traffic. Use it when you know the exact IP addresses of your Art-Net nodes.
+</Note>
+
+## Input Configuration
+
+### Opening an Input
+
+```cpp
+bool openInput(quint32 input, quint32 universe);
+```
+
+The plugin listens for Art-Net packets on UDP port 6454.
+
+### Receiving Data
+
+When Art-Net packets arrive:
+1. The plugin's UDP socket receives the datagram
+2. `handlePacket()` processes the Art-Net packet
+3. Controller emits `valueChanged()` signal for each changed channel
+4. QLC+ engine receives and processes the input
+
+```cpp
+signal void valueChanged(quint32 universe, quint32 input, 
+                        quint32 channel, uchar value);
+```
+
+### Input Universe Mapping
+
+Set the Art-Net universe to listen for:
+
+```cpp
+setParameter(universe, line, Input, "inputUni", artnetUniverseNumber);
+```
+
+## Universe Mapping
+
+Art-Net uses 15-bit universe addressing (0-32767), while QLC+ has its own universe indexing:
+
+```cpp
+typedef struct _uinfo
+{
+    int type;                     // Input, Output, or both
+    ushort inputUniverse;         // Art-Net universe for input
+    QHostAddress outputAddress;   // Destination IP for output  
+    ushort outputUniverse;        // Art-Net universe for output
+    int outputTransmissionMode;   // Standard/Full/Partial
+} UniverseInfo;
+```
+
+### Example Mapping
+
+| QLC+ Universe | Art-Net Universe | Direction | IP Address |
+|---------------|------------------|-----------|------------|
+| 1 | 0 | Output | 2.255.255.255 |
+| 2 | 1 | Output | 192.168.1.100 |
+| 3 | 0 | Input | (listening) |
+| 4 | 10 | Both | 192.168.1.101 |
+
+## RDM Support
+
+The plugin has experimental RDM over Art-Net support:
+
+```cpp
+bool sendRDMCommand(quint32 universe, quint32 line, 
+                    uchar command, QVariantList params);
+```
+
+<Warning>
+RDM over Art-Net is experimental and may not work with all devices. Most Art-Net nodes do not support RDM.
+</Warning>
+
+## Network Configuration Best Practices
+
+### Dedicated Network
+
+<Steps>
+  <Step title="Use a dedicated network interface">
+    Dedicate one NIC for Art-Net to avoid conflicts with general network traffic
+  </Step>
+  <Step title="Use appropriate subnet">
+    Common Art-Net subnet: 2.x.x.x or 10.x.x.x
+  </Step>
+  <Step title="Configure static IPs">
+    Avoid DHCP for Art-Net devices to ensure consistent addressing
+  </Step>
+  <Step title="Disable firewall for Art-Net port">
+    Ensure UDP port 6454 is open for both input and output
+  </Step>
+</Steps>
+
+### IP Address Configuration
+
+**Recommended ranges:**
+```
+2.0.0.0/8     // Traditional Art-Net range
+10.0.0.0/8    // Private network range
+192.168.0.0/16 // Private network range
+```
+
+<Note>
+The 2.x.x.x range is historically used for Art-Net, but any private IP range works fine.
+</Note>
+
+### Subnet Broadcast Addresses
+
+For a 255.255.255.0 subnet mask:
+```
+2.0.0.255      // 2.0.0.x subnet broadcast
+10.0.1.255     // 10.0.1.x subnet broadcast  
+192.168.1.255  // 192.168.1.x subnet broadcast
+```
+
+## Performance Optimization
+
+### Reduce Broadcast Traffic
+
+- Use unicast when possible instead of broadcast
+- Use Standard or Partial transmission modes
+- Patch only required universes
+
+### Network Switch Configuration
+
+- Use switches with IGMP snooping for multicast
+- Ensure switches support sufficient bandwidth (Gigabit recommended)
+- Use QoS to prioritize Art-Net traffic
+
+### Multiple Network Interfaces
+
+If you have multiple NICs:
+1. QLC+ creates a separate controller for each interface
+2. Each controller can handle multiple universes
+3. Distribute universes across interfaces for load balancing
+
+## Troubleshooting
+
+### No Output
+
+<AccordionGroup>
+  <Accordion title="Check network connection">
+    Verify the network interface is up and configured with an IP address
+  </Accordion>
+  <Accordion title="Verify IP address and subnet">
+    Ensure QLC+ and Art-Net devices are on the same subnet (or properly routed)
+  </Accordion>
+  <Accordion title="Check firewall settings">
+    UDP port 6454 must be open for both incoming and outgoing traffic
+  </Accordion>
+  <Accordion title="Verify universe mapping">
+    Double-check the Art-Net universe numbers match between QLC+ and receiving devices
+  </Accordion>
+</AccordionGroup>
+
+### No Input
+
+1. Ensure input line is opened and patched
+2. Verify the Art-Net node is sending to the correct IP address
+3. Check that input universe numbers match
+4. Use Wireshark to verify Art-Net packets are arriving
+
+### Performance Issues
+
+- Switch to unicast addressing
+- Use Standard transmission mode
+- Reduce number of patched universes
+- Check for network congestion
+- Verify switch/router performance
+
+### Firewall Configuration
+
+**Linux (iptables):**
+```bash
+sudo iptables -A INPUT -p udp --dport 6454 -j ACCEPT
+sudo iptables -A OUTPUT -p udp --sport 6454 -j ACCEPT
+```
+
+**Linux (firewalld):**
+```bash
+sudo firewall-cmd --permanent --add-port=6454/udp
+sudo firewall-cmd --reload
+```
+
+**Windows:**
+```powershell
+New-NetFirewallRule -DisplayName "Art-Net" -Direction Inbound -Protocol UDP -LocalPort 6454 -Action Allow
+```
+
+## Protocol Details
+
+For full Art-Net protocol specifications, see:
+- [Artistic Licence Art-Net Documentation](https://art-net.org.uk/)
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="E1.31 (sACN)" icon="network-wired" href="/plugins/e131-sacn">
+    Alternative streaming ACN protocol
+  </Card>
+  <Card title="OSC" icon="wave-square" href="/plugins/osc">
+    Open Sound Control protocol
+  </Card>
+  <Card title="Plugin Overview" icon="plug" href="/plugins/overview">
+    Learn about the plugin architecture
+  </Card>
+</CardGroup>

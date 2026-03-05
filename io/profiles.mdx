@@ -1,0 +1,441 @@
+---
+title: Input Profiles
+description: Configure input profiles for MIDI, HID, and other controllers in QLC+
+---
+
+Input profiles provide logical channel mapping for control devices, making it easier to work with MIDI controllers, HID devices, and other input hardware by assigning meaningful names to buttons, sliders, and other controls.
+
+## Overview
+
+Input profiles solve a key usability problem: instead of dealing with generic channel numbers, you can work with named controls like "Fader 1", "Play Button", or "Jog Wheel".
+
+### Profile Components
+
+```cpp
+class QLCInputProfile {
+    QString manufacturer() const;
+    QString model() const;
+    QString name() const;  // Returns "manufacturer - model"
+    Type type() const;
+};
+```
+
+## Profile Types
+
+QLC+ supports input profiles for various device types:
+
+```cpp
+enum Type {
+    MIDI = 0,    // MIDI controllers and interfaces
+    OS2L,        // OS2L protocol devices
+    OSC,         // Open Sound Control
+    HID,         // USB HID devices
+    DMX,         // DMX input devices
+    Enttec,      // Enttec Wing panels
+};
+```
+
+<CardGroup cols={3}>
+  <Card title="MIDI" icon="music">
+    MIDI controllers with faders, knobs, pads, and buttons
+  </Card>
+  <Card title="HID" icon="usb-drive">
+    USB HID devices including custom controllers
+  </Card>
+  <Card title="OSC" icon="network-wired">
+    TouchOSC and other OSC control surfaces
+  </Card>
+  <Card title="DMX" icon="lightbulb">
+    DMX input devices for trigger control
+  </Card>
+  <Card title="Enttec" icon="gamepad">
+    Enttec Shortcut Wing and Playback Wing
+  </Card>
+  <Card title="OS2L" icon="broadcast-tower">
+    ShowXpress OS2L protocol devices
+  </Card>
+</CardGroup>
+
+## Creating Profiles
+
+### Basic Profile Setup
+
+Set manufacturer and model information:
+
+```cpp
+void setManufacturer(const QString& manufacturer);
+void setModel(const QString& model);
+void setType(Type type);
+```
+
+**Example:**
+
+```cpp
+QLCInputProfile* profile = new QLCInputProfile();
+profile->setManufacturer("Behringer");
+profile->setModel("BCF2000");
+profile->setType(QLCInputProfile::MIDI);
+```
+
+### Profile Path
+
+Profiles are stored in specific directories:
+
+```cpp
+void setPath(QString path);
+QString path() const;
+
+// Get system profile directory
+static QDir systemProfileDirectory();
+
+// Get user profile directory
+static QDir userProfileDirectory();
+```
+
+<Note>
+System profiles are installed with QLC+ and cannot be modified. User profiles are stored in your user directory and can be customized.
+</Note>
+
+## Channel Mapping
+
+### Adding Channels
+
+Map physical controller inputs to logical channel names:
+
+```cpp
+bool insertChannel(quint32 channel, QLCInputChannel* ich);
+```
+
+**Example:**
+
+```cpp
+QLCInputChannel* fader1 = new QLCInputChannel();
+fader1->setName("Fader 1");
+fader1->setType(QLCInputChannel::Slider);
+profile->insertChannel(0, fader1);  // Map to channel 0
+```
+
+### Removing Channels
+
+```cpp
+bool removeChannel(quint32 channel);
+```
+
+### Remapping Channels
+
+Change the channel number for an existing input:
+
+```cpp
+bool remapChannel(QLCInputChannel* ich, quint32 number);
+```
+
+### Querying Channels
+
+Get channel information:
+
+```cpp
+QLCInputChannel* channel(quint32 channel) const;
+quint32 channelNumber(const QLCInputChannel* channel) const;
+QMap<quint32, QLCInputChannel*> channels() const;
+```
+
+<Note>
+Not all channel numbers need to be mapped. The channel map uses `QMap` to efficiently handle sparse channel assignments.
+</Note>
+
+## MIDI-Specific Settings
+
+### MIDI Note Off Behavior
+
+Configure how Note Off messages are sent:
+
+```cpp
+void setMidiSendNoteOff(bool enable);
+bool midiSendNoteOff() const;
+```
+
+**Options:**
+- `true` - Send standard Note Off messages
+- `false` - Send Note On with velocity 0 (some hardware requires this)
+
+<Warning>
+Some MIDI controllers and devices only respond to Note On messages with velocity 0, not true Note Off messages. Check your device documentation.
+</Warning>
+
+### MIDI Channel Table
+
+Provide friendly names for MIDI channels:
+
+```cpp
+bool hasMidiChannelTable();
+void addMidiChannel(uchar channel, QString label);
+void removeMidiChannel(uchar channel);
+QMap<uchar, QString> midiChannelTable();
+```
+
+**Example:**
+
+```cpp
+profile->addMidiChannel(1, "Master Fader");
+profile->addMidiChannel(2, "Scene Controls");
+profile->addMidiChannel(3, "FX Controls");
+```
+
+## Feedback Features
+
+### Color Feedback Table
+
+For controllers with RGB LED feedback (like Launchpad or APC):
+
+```cpp
+bool hasColorTable();
+void addColor(uchar value, QString label, QColor color);
+void removeColor(uchar value);
+QMap<uchar, QPair<QString, QColor>> colorTable();
+```
+
+**Example:**
+
+```cpp
+profile->addColor(0, "Off", QColor(0, 0, 0));
+profile->addColor(1, "Red Low", QColor(128, 0, 0));
+profile->addColor(3, "Red Full", QColor(255, 0, 0));
+profile->addColor(16, "Yellow", QColor(255, 255, 0));
+profile->addColor(48, "Green", QColor(0, 255, 0));
+```
+
+<Note>
+Color tables map DMX values to specific colors on LED feedback devices, allowing QLC+ to send the correct values for visual feedback.
+</Note>
+
+### Extra Parameters
+
+Some devices require additional parameters for feedback:
+
+```cpp
+QVariant channelExtraParams(const QLCInputChannel* channel) const;
+```
+
+### Global Settings
+
+Access all global profile settings:
+
+```cpp
+QMap<QString, QVariant> globalSettings() const;
+```
+
+## Loading and Saving
+
+### Loading Profiles
+
+Load a profile from an XML file:
+
+```cpp
+static QLCInputProfile* loader(const QString& path);
+```
+
+**Example:**
+
+```cpp
+QLCInputProfile* profile = QLCInputProfile::loader(
+    "/path/to/profile.qxi"
+);
+if (profile) {
+    // Profile loaded successfully
+    inputMap->addProfile(profile);
+}
+```
+
+### Saving Profiles
+
+Save profile to XML:
+
+```cpp
+bool saveXML(const QString& fileName);
+```
+
+### Loading Color Tables
+
+```cpp
+bool loadColorTableXML(QXmlStreamReader& tableRoot);
+```
+
+### Loading MIDI Channel Tables
+
+```cpp
+bool loadMidiChannelTableXML(QXmlStreamReader& tableRoot);
+```
+
+## Profile Management
+
+The `InputOutputMap` manages available profiles:
+
+### Loading Profiles
+
+```cpp
+void loadProfiles(const QDir& dir);
+```
+
+### Getting Available Profiles
+
+```cpp
+QStringList profileNames();
+QLCInputProfile* profile(const QString& name);
+```
+
+### Adding and Removing
+
+```cpp
+bool addProfile(QLCInputProfile* profile);
+bool removeProfile(const QString& name);
+```
+
+## Using Profiles with Patches
+
+Assign a profile to an input patch:
+
+```cpp
+bool setInputPatch(quint32 universe, 
+                   const QString& pluginName,
+                   const QString& inputUID, 
+                   quint32 input,
+                   const QString& profileName);
+```
+
+Or update an existing patch's profile:
+
+```cpp
+bool setInputProfile(quint32 universe, const QString& profileName);
+```
+
+### Getting Input Source Names
+
+Retrieve friendly names for input sources:
+
+```cpp
+bool inputSourceNames(const QLCInputSource* src,
+                     QString& uniName, 
+                     QString& chName) const;
+```
+
+This returns the universe name and channel name from the profile.
+
+## Profile Structure (XML)
+
+Input profiles are stored in XML format with the `.qxi` extension:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<InputProfile>
+    <Manufacturer>Behringer</Manufacturer>
+    <Model>BCF2000</Model>
+    <Type>MIDI</Type>
+    
+    <Channel Number="0">
+        <Name>Fader 1</Name>
+        <Type>Slider</Type>
+    </Channel>
+    
+    <Channel Number="1">
+        <Name>Fader 2</Name>
+        <Type>Slider</Type>
+    </Channel>
+    
+    <!-- Color table for LED feedback -->
+    <ColorTable>
+        <Color Value="0" Label="Off">#000000</Color>
+        <Color Value="1" Label="Red">#FF0000</Color>
+    </ColorTable>
+    
+    <!-- MIDI channel labels -->
+    <MidiChannelTable>
+        <Channel Number="1" Label="Master Controls"/>
+        <Channel Number="2" Label="Scene Buttons"/>
+    </MidiChannelTable>
+</InputProfile>
+```
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="MIDI Controller" icon="music">
+    Map faders, knobs, and buttons to logical names. Configure Note Off behavior and set up color feedback for LED rings.
+  </Card>
+  <Card title="Launchpad/APC" icon="grid">
+    Create grid-based mappings with color feedback tables for the LED matrix. Map each pad to a specific channel.
+  </Card>
+  <Card title="DMX Input" icon="lightbulb">
+    Use DMX channels as triggers. Map footswitches or other DMX-based control surfaces.
+  </Card>
+  <Card title="OSC Surface" icon="mobile">
+    Map TouchOSC or other OSC controllers. Use descriptive channel names for touch controls.
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+### Naming Conventions
+
+- Use clear, descriptive channel names
+- Include control type in name (e.g., "Play Button", "Master Fader")
+- Group related controls with consistent naming
+- Use manufacturer/model exactly as they appear on the device
+
+### Organization
+
+- Map all used controls, even if some remain unnamed
+- Document special behaviors or requirements
+- Test feedback functionality thoroughly
+- Keep profiles updated when firmware changes
+
+### Sharing Profiles
+
+- Save user profiles in the user profile directory
+- Test profiles with the actual hardware
+- Include color tables for devices with LED feedback
+- Document any special configuration needed
+
+### Performance
+
+- Only map channels you actually use
+- Remove unused profiles from the profile directory
+- Use sparse channel mapping for devices with gaps
+- Test profile loading time with complex setups
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Profile not appearing in the list">
+    - Check that the profile file has `.qxi` extension
+    - Verify the XML structure is valid
+    - Ensure the file is in the system or user profile directory
+    - Restart QLC+ after adding new profiles
+  </Accordion>
+  
+  <Accordion title="Feedback not working">
+    - Verify the device supports feedback
+    - Check that a feedback patch is configured
+    - Confirm the color table values match device expectations
+    - Test with simple on/off values first
+  </Accordion>
+  
+  <Accordion title="MIDI notes not responding">
+    - Try toggling the MIDI Send Note Off setting
+    - Check MIDI channel assignments
+    - Verify the controller is sending on the expected MIDI channel
+    - Test with MIDI monitor tools
+  </Accordion>
+  
+  <Accordion title="Channel names not showing">
+    - Confirm the profile is assigned to the input patch
+    - Check that channel numbers match the profile
+    - Verify the profile loaded successfully (check logs)
+    - Ensure the profile type matches the plugin type
+  </Accordion>
+</AccordionGroup>
+
+## Code References
+
+- Input Profile Class: `engine/src/qlcinputprofile.h:48`
+- Input Patch: `engine/src/inputpatch.h:53`
+- Profile Management: `engine/src/inputoutputmap.h:530`

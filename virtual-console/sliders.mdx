@@ -1,0 +1,464 @@
+---
+title: Slider Widgets
+description: Control intensity, playback, and DMX levels with slider widgets in QLC+
+---
+
+Slider widgets provide continuous control over values in QLC+. They can control fixture intensity, function playback, or act as submasters. Sliders are implemented in `ui/src/virtualconsole/vcslider.h` and `vcslider.cpp`, and inherit from both `VCWidget` and `DMXSource`.
+
+## Overview
+
+Slider widgets support three distinct modes:
+
+- **Level Mode**: Control individual fixture channels (intensity, color, etc.)
+- **Playback Mode**: Control function intensity and playback
+- **Submaster Mode**: Act as a master intensity control for other widgets
+
+Sliders can be displayed as traditional linear sliders or rotary knobs, making them versatile for different interface layouts.
+
+## Slider Modes
+
+### Level Mode
+
+Direct control of DMX channel values:
+
+```cpp
+enum SliderMode
+{
+    Level,
+    Playback,
+    Submaster
+};
+```
+
+Source: `vcslider.h:147-152`
+
+Level mode allows you to:
+
+- Control specific fixture channels directly
+- Set DMX values between low and high limits
+- Monitor current channel values from other functions
+- Override temporary values (useful for manual control)
+
+<Note>
+Level mode bypasses the function system and writes directly to DMX universes through the `DMXSource` interface. This provides immediate, low-latency control of fixtures.
+</Note>
+
+### Playback Mode
+
+Control function intensity during playback:
+
+- Start/stop assigned function
+- Adjust function intensity in real-time
+- Flash button for temporary full intensity
+- Monitor function state and intensity
+
+Playback mode is ideal for:
+
+- Controlling chaser speed and intensity
+- Adjusting scene brightness
+- Fading effects in and out during performances
+
+### Submaster Mode
+
+Act as a master control for other widgets:
+
+- Control intensity of multiple widgets simultaneously
+- No function assignment needed
+- Widgets listen for `submasterValueChanged()` signal
+- Common in professional lighting setups
+
+## Level Mode Configuration
+
+### Level Channels
+
+Level mode controls specific fixture channels:
+
+```cpp
+class LevelChannel
+{
+public:
+    quint32 fixture;  // Fixture ID
+    quint32 channel;  // Channel within fixture
+};
+
+void addLevelChannel(quint32 fixture, quint32 channel);
+void removeLevelChannel(quint32 fixture, quint32 channel);
+void clearLevelChannels();
+QList<VCSlider::LevelChannel> levelChannels();
+```
+
+Source: `vcslider.h:224-284`
+
+Example: Control the intensity channel of multiple fixtures with one slider.
+
+### Level Limits
+
+Set minimum and maximum values for controlled channels:
+
+```cpp
+void setLevelLowLimit(uchar value);   // 0-255
+uchar levelLowLimit() const;
+void setLevelHighLimit(uchar value);  // 0-255
+uchar levelHighLimit() const;
+```
+
+Source: `vcslider.h:287-308`
+
+Use cases:
+
+- **Park dimmer at minimum**: Set low limit to 10-20 to prevent complete darkness
+- **Limit maximum brightness**: Set high limit to 200 to protect fixtures
+- **Restricted range**: Control only a portion of the channel range
+
+### Channel Monitoring
+
+Monitor current channel values from other functions:
+
+```cpp
+void setChannelsMonitorEnabled(bool enable);
+bool channelsMonitorEnabled() const;
+```
+
+Source: `vcslider.h:312-318`
+
+When enabled:
+
+- Slider displays current DMX value from other sources
+- Visual feedback shows actual output level
+- Useful for seeing what other functions are doing
+- Can override monitored value by moving slider
+
+The monitoring is implemented through `slotUniverseWritten()` which receives universe data updates.
+
+## Playback Mode Configuration
+
+### Playback Function
+
+Assign a function to control:
+
+```cpp
+void setPlaybackFunction(quint32 fid);
+quint32 playbackFunction() const;
+uchar playbackValue() const;
+void setPlaybackValue(uchar value);
+```
+
+Source: `vcslider.h:364-392`
+
+The slider:
+
+- Starts function when moved from zero
+- Adjusts function intensity as slider moves
+- Stops function when returned to zero
+- Monitors function state from other sources
+
+### Flash Button
+
+Optional button for temporary full intensity:
+
+```cpp
+bool playbackFlashEnable() const;
+void setPlaybackFlashEnable(bool enable);
+```
+
+Source: `vcslider.h:397-399`
+
+When enabled:
+
+- Button appears next to slider
+- Press to temporarily set function to full intensity
+- Release to return to slider value
+- Keyboard shortcut support
+
+Flash button state is tracked through:
+
+```cpp
+protected:
+    bool m_playbackFlashEnable;
+    bool m_playbackIsFlashing;
+    uchar m_playbackFlashPreviousValue;
+```
+
+Source: `vcslider.h:416-418`
+
+## Widget Style
+
+Sliders can be displayed in two styles:
+
+```cpp
+enum SliderWidgetStyle
+{
+    WSlider,  // Traditional linear slider
+    WKnob     // Rotary knob
+};
+
+void setWidgetStyle(SliderWidgetStyle mode);
+SliderWidgetStyle widgetStyle() const;
+```
+
+Source: `vcslider.h:474-489`
+
+### Linear Slider
+
+- Traditional vertical or horizontal bar
+- Shows current value visually
+- Easy to see at a glance
+- Better for precise value setting
+
+### Rotary Knob
+
+- Space-saving circular control
+- Familiar to audio engineers
+- Good for dense control surfaces
+- Implemented via `KnobWidget` class
+
+## Value Display
+
+Sliders can display values in different formats:
+
+```cpp
+enum ValueDisplayStyle
+{
+    ExactValue,        // DMX value (0-255)
+    PercentageValue    // Percentage (0-100%)
+};
+
+void setValueDisplayStyle(ValueDisplayStyle style);
+ValueDisplayStyle valueDisplayStyle() const;
+```
+
+Source: `vcslider.h:189-199`
+
+The value is displayed in labels above and below the slider showing the current position.
+
+## Inverted Appearance
+
+Reverse the slider direction:
+
+```cpp
+bool invertedAppearance() const;
+void setInvertedAppearance(bool invert);
+```
+
+Source: `vcslider.h:206-209`
+
+Useful for:
+
+- Matching hardware controller layouts
+- Ergonomic improvements
+- Visual organization
+
+## Value Catching
+
+Smooth transition when moving slider:
+
+```cpp
+bool catchValues() const;
+void setCatchValues(bool enable);
+```
+
+Source: `vcslider.h:213-216`
+
+When enabled:
+
+- Slider "catches" current value before responding
+- Prevents jumps when monitoring is active
+- Smooth takeover from monitored values
+- Common in professional lighting consoles
+
+## Click & Go
+
+Quick value selection through popup interfaces:
+
+```cpp
+void setClickAndGoType(ClickAndGoWidget::ClickAndGo type);
+ClickAndGoWidget::ClickAndGo clickAndGoType() const;
+ClickAndGoWidget* getClickAndGoWidget();
+```
+
+Source: `vcslider.h:533-554`
+
+Click & Go types:
+
+- **None**: Disabled
+- **Preset**: Choose from preset values
+- **RGB**: Color picker for RGB fixtures
+- **CMY**: Color picker for CMY fixtures  
+- **RGBW/RGBA/RGBAW**: Extended color pickers
+
+Click the button next to the slider to open the Click & Go widget for quick value selection.
+
+## Override Reset
+
+Return to monitored value after override:
+
+```cpp
+void setOverrideResetKeySequence(const QKeySequence& keySequence);
+QKeySequence overrideResetKeySequence() const;
+```
+
+Source: `vcslider.h:576-580`
+
+Workflow:
+
+1. Slider monitors channel value from function
+2. User moves slider (override)
+3. User presses reset key
+4. Slider returns to monitoring current value
+
+The reset button appears when monitoring is enabled and an override is active.
+
+## DMX Source Implementation
+
+Sliders write directly to DMX universes:
+
+```cpp
+class VCSlider : public VCWidget, public DMXSource
+{
+    void writeDMX(MasterTimer *timer, QList<Universe*> universes) override;
+    
+protected:
+    void writeDMXLevel(MasterTimer *timer, QList<Universe*> universes);
+    void writeDMXPlayback(MasterTimer *timer, QList<Universe*> universes);
+};
+```
+
+Source: `vcslider.h:75`, `vcslider.h:439-447`
+
+The `writeDMX()` method is called every timer tick:
+
+- **Level Mode**: Writes slider value to configured channels
+- **Playback Mode**: Adjusts running function's intensity
+- **Uses GenericFader**: Smooth value transitions
+
+Faders are managed per-universe:
+
+```cpp
+private:
+    QMap<quint32, QSharedPointer<GenericFader>> m_fadersMap;
+```
+
+Source: `vcslider.h:451`
+
+## External Control
+
+### Multiple Input Sources
+
+Sliders support multiple input sources:
+
+```cpp
+static const quint8 sliderInputSourceId;        // Main slider input
+static const quint8 overrideResetInputSourceId; // Reset button input  
+static const quint8 flashButtonInputSourceId;   // Flash button input
+```
+
+Source: `vcslider.h:83-85`
+
+Each input source can be mapped independently to different MIDI/OSC controls.
+
+### Keyboard Control
+
+Playback flash button supports keyboard shortcuts:
+
+```cpp
+QKeySequence playbackFlashKeySequence() const;
+void setPlaybackFlashKeySequence(const QKeySequence& keySequence);
+```
+
+Source: `vcslider.h:603-604`
+
+## Slider Matrix
+
+Create multiple sliders at once:
+
+- Access via "Add Slider Matrix" menu
+- Creates a grid of sliders
+- Batch configure level channels
+- Map to fixture capabilities
+- Implemented in `addvcslidermatrix.cpp`
+
+<Note>
+Slider matrices are particularly useful when you need to create manual control for multiple fixtures with similar capabilities, such as a bank of RGB color mixing sliders.
+</Note>
+
+## Layout Components
+
+Slider UI consists of several components:
+
+```cpp
+protected:
+    QHBoxLayout *m_hbox;              // Main layout
+    QAbstractSlider *m_slider;        // Slider or knob widget
+    QLabel *m_topLabel;               // Value display above
+    QLabel *m_bottomLabel;            // Caption below
+    QToolButton *m_resetButton;       // Override reset
+    QToolButton *m_cngButton;         // Click & Go
+    QToolButton *m_flashButton;       // Flash (playback mode)
+```
+
+Source: `vcslider.h:467-468`, `vcslider.h:507-510`, `vcslider.h:527`, `vcslider.h:592`, `vcslider.h:620`
+
+Each component is optional and appears based on slider configuration.
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Master Dimmer" icon="sliders">
+    Level mode slider controlling intensity of all stage fixtures
+  </Card>
+  <Card title="Chaser Speed" icon="gauge">
+    Playback mode slider adjusting chaser playback speed
+  </Card>
+  <Card title="RGB Color Mix" icon="palette">
+    Three level mode sliders for red, green, and blue channels
+  </Card>
+  <Card title="Scene Intensity" icon="lightbulb">
+    Playback mode with flash button for scene control
+  </Card>
+</CardGroup>
+
+## XML Persistence
+
+Slider configuration example:
+
+```xml
+<Slider ID="1" WidgetStyle="Slider">
+    <WindowState X="100" Y="10" Width="60" Height="200"/>
+    <Appearance>
+        <Font>Arial,10</Font>
+    </Appearance>
+    <SliderMode ValueDisplayStyle="Percentage">Level</SliderMode>
+    <Level LowLimit="0" HighLimit="255" Monitor="true">
+        <Channel Fixture="0">0</Channel>
+        <Channel Fixture="1">0</Channel>
+    </Level>
+    <CatchValues>true</CatchValues>
+    <Input Universe="0" Channel="1"/>
+</Slider>
+```
+
+Key XML elements:
+
+- `SliderMode`: Level, Playback, or Submaster
+- `Level`: Channel mappings and limits
+- `Playback`: Function ID and flash button settings
+- `ValueDisplayStyle`: Exact or Percentage
+- `WidgetStyle`: Slider or Knob
+- `CatchValues`: Enable value catching
+
+## Next Steps
+
+<Steps>
+  <Step title="Choose Slider Mode">
+    Decide between Level, Playback, or Submaster based on your needs
+  </Step>
+  <Step title="Configure Channels">
+    In Level mode, add fixture channels to control
+  </Step>
+  <Step title="Set Value Limits">
+    Define low and high limits for safe operation
+  </Step>
+  <Step title="Add External Control">
+    Map MIDI faders or OSC controls to the slider
+  </Step>
+</Steps>

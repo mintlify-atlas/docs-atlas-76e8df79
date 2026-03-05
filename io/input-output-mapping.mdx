@@ -1,0 +1,386 @@
+---
+title: Input/Output Mapping
+description: Understanding how QLC+ maps universes to physical inputs and outputs
+---
+
+The Input/Output Map is the core component that manages the connection between QLC+'s internal universes and physical hardware or network protocols. It handles patching, data flow, and universe management.
+
+## Overview
+
+The `InputOutputMap` class is responsible for:
+
+- Managing multiple DMX universes (512 channels each)
+- Patching universes to input/output plugins
+- Handling blackout functionality
+- Managing Grand Master controls
+- Coordinating data flow between universes and hardware
+
+## Universe Management
+
+### Universe Basics
+
+Each universe in QLC+ represents 512 DMX channels (standard DMX512 universe size):
+
+```cpp
+#define UNIVERSE_SIZE 512
+```
+
+### Adding and Removing Universes
+
+Universes can be dynamically added or removed:
+
+```cpp
+bool addUniverse(quint32 id = InputOutputMap::invalidUniverse());
+bool removeUniverse(int index);
+bool removeAllUniverses();
+```
+
+<Note>
+Each universe has a unique ID and can have a friendly name for easier identification.
+</Note>
+
+### Universe Properties
+
+**Universe Names**
+
+Set descriptive names for universes to help organize your lighting setup:
+
+```cpp
+void setUniverseName(int index, QString name);
+QString getUniverseNameByIndex(int index);
+QString getUniverseNameByID(quint32 id);
+```
+
+**Passthrough Mode**
+
+Passthrough mode allows input data to be directly forwarded to outputs:
+
+```cpp
+void setUniversePassthrough(int index, bool enable);
+bool getUniversePassthrough(int index);
+```
+
+**Monitor Mode**
+
+Enable monitoring to observe universe data without affecting output:
+
+```cpp
+void setUniverseMonitor(int index, bool enable);
+bool getUniverseMonitor(int index);
+```
+
+## Patching
+
+Patching connects QLC+ universes to physical hardware or network protocols through plugins.
+
+### Input Patching
+
+Connect an input device to a universe:
+
+```cpp
+bool setInputPatch(quint32 universe, 
+                   const QString& pluginName,
+                   const QString& inputUID, 
+                   quint32 input,
+                   const QString& profileName = QString());
+```
+
+**Parameters:**
+- `universe` - The QLC+ universe number
+- `pluginName` - Name of the input plugin (e.g., "MIDI", "OSC")
+- `inputUID` - Unique identifier for the input line
+- `input` - Input line number within the plugin
+- `profileName` - Optional input profile for channel mapping
+
+### Output Patching
+
+Connect an output device to a universe:
+
+```cpp
+bool setOutputPatch(quint32 universe, 
+                    const QString& pluginName,
+                    const QString& outputUID, 
+                    quint32 output = 0,
+                    bool isFeedback = false, 
+                    int index = 0);
+```
+
+<Note>
+A universe can have multiple output patches, allowing you to send the same data to multiple destinations simultaneously.
+</Note>
+
+### Feedback Patching
+
+Feedback allows visual indicators on input devices (like LED rings on controllers):
+
+```cpp
+OutputPatch* feedbackPatch(quint32 universe) const;
+bool sendFeedBack(quint32 universe, quint32 channel, 
+                  uchar value, const QVariant &params);
+```
+
+### Checking Patch Status
+
+Verify if a universe is patched:
+
+```cpp
+bool isUniversePatched(int index);
+```
+
+Get patch information:
+
+```cpp
+InputPatch* inputPatch(quint32 universe) const;
+OutputPatch* outputPatch(quint32 universe, int index = 0) const;
+int outputPatchesCount(quint32 universe) const;
+```
+
+## Input Patches
+
+### Structure
+
+An `InputPatch` represents one input universe and can have:
+
+- One input line from one plugin
+- An optional input profile for channel mapping
+- Custom plugin parameters
+
+### Input Profiles
+
+Input profiles provide logical channel names for controllers:
+
+```cpp
+bool setInputProfile(quint32 universe, const QString& profileName);
+QLCInputProfile* profile() const;
+QString profileName() const;
+```
+
+<CardGroup cols={2}>
+  <Card title="Input Profile Types" icon="gamepad">
+    - MIDI controllers
+    - HID devices
+    - OSC controllers
+    - DMX input devices
+    - Enttec Wing panels
+  </Card>
+  <Card title="Profile Features" icon="sliders">
+    - Channel naming
+    - Button/slider mapping
+    - Color feedback tables
+    - MIDI-specific settings
+  </Card>
+</CardGroup>
+
+### Plugin Parameters
+
+Set custom parameters for input devices:
+
+```cpp
+void setPluginParameter(QString prop, QVariant value);
+QMap<QString, QVariant> getPluginParameters();
+```
+
+## Output Patches
+
+### Structure
+
+An `OutputPatch` sends DMX data from a universe to physical hardware:
+
+```cpp
+class OutputPatch {
+    bool set(QLCIOPlugin* plugin, quint32 output);
+    bool reconnect();
+    
+    QString pluginName() const;
+    QString outputName() const;
+    bool isPatched() const;
+};
+```
+
+### Output States
+
+**Paused State**
+
+Temporarily stop output without unpatching:
+
+```cpp
+bool paused() const;
+void setPaused(bool paused);
+```
+
+**Blackout State**
+
+Individual output blackout control:
+
+```cpp
+bool blackout() const;
+void setBlackout(bool blackout);
+```
+
+### Data Transmission
+
+Output patches write universe data to hardware:
+
+```cpp
+void dump(quint32 universe, const QByteArray& data, bool dataChanged);
+```
+
+<Note>
+The `dataChanged` flag optimizes transmission by indicating if the data has changed since the last update.
+</Note>
+
+## Blackout
+
+Global blackout functionality affects all universes:
+
+```cpp
+bool toggleBlackout();
+bool setBlackout(bool blackout);
+bool blackout() const;
+```
+
+### Blackout Request
+
+For thread-safe blackout toggling:
+
+```cpp
+enum BlackoutRequest {
+    BlackoutRequestNone,
+    BlackoutRequestOn,
+    BlackoutRequestOff
+};
+
+void requestBlackout(BlackoutRequest blackout);
+```
+
+<Warning>
+Blackout is processed during `dumpUniverses()` to avoid mutex deadlocks in scripting contexts.
+</Warning>
+
+## Grand Master
+
+The Grand Master controls overall intensity across all universes.
+
+### Channel Mode
+
+Choose which channels are affected:
+
+```cpp
+void setGrandMasterChannelMode(GrandMaster::ChannelMode mode);
+GrandMaster::ChannelMode grandMasterChannelMode();
+```
+
+**Modes:**
+- Intensity channels only
+- All channels
+
+### Value Mode
+
+Define how the Grand Master affects values:
+
+```cpp
+void setGrandMasterValueMode(GrandMaster::ValueMode mode);
+GrandMaster::ValueMode grandMasterValueMode();
+```
+
+**Modes:**
+- **Limit** - Sets a maximum ceiling for values
+- **Reduce** - Proportionally scales down values
+
+### Grand Master Value
+
+Set the master intensity level (0-255):
+
+```cpp
+void setGrandMasterValue(uchar value);
+uchar grandMasterValue();
+```
+
+## Plugin Management
+
+### Available Plugins
+
+Get lists of input and output plugins:
+
+```cpp
+QStringList inputPluginNames();
+QStringList outputPluginNames();
+```
+
+### Plugin Information
+
+Query plugin capabilities:
+
+```cpp
+QString pluginDescription(const QString& pluginName);
+QStringList pluginInputs(const QString& pluginName);
+QStringList pluginOutputs(const QString& pluginName);
+bool pluginSupportsFeedback(const QString& pluginName);
+```
+
+### Plugin Configuration
+
+Configure plugins if supported:
+
+```cpp
+bool canConfigurePlugin(const QString& pluginName);
+void configurePlugin(const QString& pluginName);
+```
+
+### Plugin Status
+
+Get status information:
+
+```cpp
+QString inputPluginStatus(const QString& pluginName, quint32 input);
+QString outputPluginStatus(const QString& pluginName, quint32 output);
+```
+
+## Mapping Queries
+
+Check which universe a plugin line is mapped to:
+
+```cpp
+quint32 inputMapping(const QString& pluginName, quint32 input) const;
+quint32 outputMapping(const QString& pluginName, quint32 output) const;
+```
+
+<Note>
+These methods return `QLCIOPlugin::invalidLine()` if the line is not mapped.
+</Note>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Organization" icon="folder-tree">
+    - Use descriptive universe names
+    - Group related fixtures in the same universe
+    - Document your patching configuration
+    - Keep universe counts reasonable (performance)
+  </Card>
+  <Card title="Patching" icon="plug">
+    - Match plugin capabilities to your needs
+    - Use input profiles for better usability
+    - Test patches before show time
+    - Configure plugin parameters as needed
+  </Card>
+  <Card title="Performance" icon="gauge">
+    - Use passthrough only when necessary
+    - Monitor universes sparingly
+    - Close unused patches
+    - Optimize output patch count per universe
+  </Card>
+  <Card title="Safety" icon="shield">
+    - Test blackout functionality
+    - Configure Grand Master appropriately
+    - Verify patch states before shows
+    - Keep backup configurations
+  </Card>
+</CardGroup>
+
+## Code References
+
+- Input/Output Map: `engine/src/inputoutputmap.h:56`
+- Input Patch: `engine/src/inputpatch.h:53`
+- Output Patch: `engine/src/outputpatch.h:39`
+- Universe: `engine/src/universe.h:67`

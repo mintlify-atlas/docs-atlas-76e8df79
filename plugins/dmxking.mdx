@@ -1,0 +1,549 @@
+---
+title: DMXKing Devices
+description: DMXKing ultraDMX and other DMXKing device support
+---
+
+## Overview
+
+DMXKing manufactures professional-grade USB-to-DMX and Ethernet-to-DMX interfaces. QLC+ provides comprehensive support for DMXKing devices through the DMX USB plugin, including advanced features like RDM and multi-port configurations.
+
+<Note>
+DMXKing devices are supported through the [DMX USB plugin](/plugins/dmx-usb). This page covers DMXKing-specific features and configuration.
+</Note>
+
+## Supported Devices
+
+### DMXKing ultraDMX Pro
+
+<Card title="ultraDMX Pro" icon="microchip">
+  High-performance USB-to-DMX interface
+  
+  **Features:**
+  - 2 DMX outputs (1024 channels total)
+  - 1 DMX input (512 channels)
+  - RDM support on both outputs
+  - Galvanic isolation
+  - Individual port configuration
+  - Art-Net/sACN forwarding capability
+  
+  **Type:** `UltraPro`
+</Card>
+
+**Port configuration:**
+```cpp
+Port 1: DMX Output (512 channels)
+Port 2: DMX Output (512 channels)  
+Port 3: DMX Input (512 channels)
+```
+
+**Technical specifications:**
+- **Chipset:** FTDI FT232RL
+- **DMX Refresh Rate:** Up to 44Hz per port
+- **Connector:** USB Type-B, 5-pin XLR
+- **Power:** USB bus-powered or external 9-12V DC
+- **Isolation:** 2500V galvanic isolation
+
+### Other DMXKing Devices
+
+DMXKing produces other interfaces that may work with QLC+:
+
+- **ultraDMX Micro** - Compact single-universe interface
+- **eDMX1 Pro** - Ethernet to DMX converter
+- **eDMX2 Pro** - Dual Ethernet to DMX converter
+- **RDM Responder** - Test device for RDM development
+
+<Note>
+Ethernet-based DMXKing devices (eDMX series) work with QLC+ through the [Art-Net](/plugins/artnet) or [E1.31](/plugins/e131-sacn) plugins, not the DMX USB plugin.
+</Note>
+
+## Device Detection
+
+DMXKing devices use FTDI USB chips and implement the ENTTEC Pro protocol with extensions:
+
+### DMXKing Detection Process
+
+```cpp
+static bool detectDMXKingDevice(DMXInterface *iface,
+                                QString &manufName, QString &deviceName,
+                                int &ESTA_ID, int &DEV_ID,
+                                QByteArray &portDirection);
+```
+
+**Detection steps:**
+
+1. **Query manufacturer** - Send label 77 (Get Widget Parameters)
+2. **Check ESTA ID** - DMXKing devices report ESTA ID
+3. **Read device name** - Label 78 (Get Widget Name)
+4. **Get port configuration** - Label 211 (Get Port Assignment)
+5. **Activate DMXKing mode** - Enable DMXKing-specific features
+
+### ESTA Manufacturer ID
+
+DMXKing devices report their ESTA manufacturer ID:
+
+```cpp
+#define ULTRADMX_PRO_DEV_ID 0x02
+
+int ESTA_ID;  // DMXKing ESTA ID
+int DEV_ID;   // Device ID (e.g., 0x02 for ultraDMX Pro)
+```
+
+### DMXKing Mode
+
+Once detected, the plugin enables DMXKing-specific features:
+
+```cpp
+void setDMXKingMode();
+bool m_dmxKingMode;  // Flag for DMXKing-specific commands
+```
+
+## Port Configuration
+
+DMXKing devices have configurable ports with direction flags:
+
+### Port Flags
+
+```cpp
+enum PortType
+{
+    Output              = 1 << 0,  // DMX output capability
+    Input               = 1 << 1,  // DMX input capability  
+    USB_DMX_Forward     = 1 << 2,  // Forward USB DMX to network
+    ArtNet_sACN_Forward = 1 << 3,  // Forward network to USB DMX
+    ArtNet_sACN_Select  = 1 << 4   // Select Art-Net vs sACN
+};
+```
+
+### Port Direction
+
+Ports can be configured as input, output, or both:
+
+```cpp
+static void parsePortFlags(const QByteArray &inArray, QByteArray &outArray);
+```
+
+**Example port configuration:**
+```
+Port 1: Output (0x01)
+Port 2: Output (0x01)
+Port 3: Input  (0x02)
+```
+
+### Getting Port Configuration
+
+Query current port settings with label 211:
+
+```cpp
+// Send: Label 211 (Get Port Assignment)
+// Receive: Port flags for each port
+```
+
+The plugin automatically reads port configuration during device detection.
+
+## ultraDMX Pro Features
+
+### Multi-Port Operation
+
+The ultraDMX Pro supports simultaneous operation on multiple ports:
+
+```cpp
+// Opening outputs
+open(0, false);  // Open Port 1 (output)
+open(1, false);  // Open Port 2 (output)
+
+// Opening input  
+open(0, true);   // Open Port 3 (input)
+```
+
+### Port-Specific Labels
+
+DMXKing extends the ENTTEC protocol with port-specific labels:
+
+**Standard labels (Port 1):**
+- Label 6: Send DMX Packet (Port 1)
+- Label 5: Receive DMX Packet (Port 1)
+
+**Extended labels (Port 2):**
+- Label 202: Send DMX Packet (Port 2)
+- Label 212: Receive DMX Packet (Port 2)
+
+```cpp
+// Plugin automatically uses correct label based on port
+if (output == 0) {
+    // Use label 6
+} else if (output == 1) {
+    // Use label 202
+}
+```
+
+### RDM on Multiple Ports
+
+Both output ports support RDM independently:
+
+```cpp
+bool sendRDMCommand(quint32 universe, quint32 line,
+                    uchar command, QVariantList params);
+```
+
+**RDM labels:**
+- **Port 1:** Label 7 (RDM), Label 11 (RDM Discovery)
+- **Port 2:** Label 207 (RDM), Label 211 (RDM Discovery)
+
+The plugin automatically selects the correct label based on the port.
+
+### Network Forwarding
+
+The ultraDMX Pro can forward between USB and network protocols:
+
+**USB to Network:**
+```cpp
+PortType::USB_DMX_Forward  // Forward USB DMX to Art-Net/sACN
+```
+
+**Network to USB:**
+```cpp  
+PortType::ArtNet_sACN_Forward  // Forward Art-Net/sACN to USB DMX
+```
+
+**Protocol selection:**
+```cpp
+PortType::ArtNet_sACN_Select  // 0 = Art-Net, 1 = sACN
+```
+
+<Note>
+Network forwarding is configured through DMXKing's configuration software, not QLC+. QLC+ reads the configuration but doesn't modify it.
+</Note>
+
+## Reading Device Information
+
+### Device Name
+
+Label 78 retrieves the device name:
+
+```cpp
+static bool writeLabelRequest(DMXInterface *iface, int label);
+static bool readResponse(DMXInterface *iface, char label, QByteArray &payload);
+
+// Request: Label 78 (Get Widget Name)  
+// Response: Device name string (e.g., "DMXking ultraDMX Pro")
+```
+
+The device name is displayed in QLC+:
+
+```cpp
+virtual QString realName() const;  // Returns device name from label 78
+```
+
+### Widget Parameters
+
+Label 77 returns device capabilities:
+
+```cpp
+// Request: Label 77 (Get Widget Parameters)
+// Response: 
+//   - Firmware version
+//   - DMX break/MAB times
+//   - DMX refresh rate
+```
+
+### Serial Number
+
+DMXKing devices have unique serial numbers:
+
+```cpp
+static bool extractSerial();
+QString m_proSerial;
+```
+
+Format: Serial number embedded in device string
+
+## Driver Configuration
+
+### Windows
+
+**D2XX Driver (Recommended):**
+
+<Steps>
+  <Step title="Download FTDI D2XX drivers">
+    Available from FTDI website or DMXKing website
+  </Step>
+  <Step title="Install drivers">
+    Run installer and follow prompts
+  </Step>
+  <Step title="Remove VCP drivers">
+    D2XX and VCP conflict - uninstall VCP if present
+  </Step>
+  <Step title="Connect device">
+    Windows should detect as "USB Serial Converter"
+  </Step>
+  <Step title="Verify in QLC+">
+    Device should appear in DMX USB plugin outputs
+  </Step>
+</Steps>
+
+### Linux
+
+**libFTDI (Recommended):**
+
+```bash
+# Install libFTDI
+sudo apt-get install libftdi1-dev
+
+# Create udev rule for DMXKing devices
+sudo nano /etc/udev/rules.d/50-dmxking.rules
+```
+
+**Udev rule:**
+```
+# DMXKing ultraDMX Pro
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", MODE="0666"
+
+# Apply rule
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", GROUP="dialout"
+```
+
+**Reload udev:**
+```bash
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+**Add user to dialout group:**
+```bash
+sudo usermod -a -G dialout $USER
+# Logout and login for changes to take effect
+```
+
+### macOS
+
+**D2XX Driver:**
+
+Drivers are typically included with QLC+ or installed automatically.
+
+**Manual installation:**
+1. Download FTDI D2XX drivers for macOS
+2. Run installer package
+3. Restart if prompted
+4. Connect DMXKing device
+
+<Warning>
+macOS may require security approval in System Preferences > Security & Privacy after driver installation.
+</Warning>
+
+## RDM Features
+
+DMXKing devices have excellent RDM support:
+
+### RDM Discovery
+
+Find all RDM devices on the DMX line:
+
+```cpp
+// Send discovery command
+sendRDMCommand(universe, line, RDM_DISCOVERY, QVariantList());
+
+// Plugin uses:
+// - Label 11 for Port 1
+// - Label 211 for Port 2
+```
+
+**Discovery process:**
+1. Send discovery request (mute all devices)
+2. Devices respond with their UIDs
+3. Plugin builds list of discovered devices
+4. Unmute all devices
+
+### RDM Get/Set Commands
+
+Read or modify device parameters:
+
+```cpp
+QVariantList params;
+params << deviceUID << parameterID << value;
+sendRDMCommand(universe, line, RDM_GET, params);
+```
+
+**Common RDM parameters:**
+- `0x0010` - Device Info
+- `0x0020` - Product Detail
+- `0x00F0` - DMX Start Address
+- `0x0080` - Device Label
+- `0x0096` - Lamp State
+
+### RDM Best Practices
+
+<Steps>
+  <Step title="Use quality DMX cables">
+    RDM requires good signal quality - use DMX-rated cables, not mic cables
+  </Step>
+  <Step title="Proper termination">
+    Install 120Ω terminator on last device in chain
+  </Step>
+  <Step title="Short cable runs">
+    Keep total cable length under 300m (1000ft)
+  </Step>
+  <Step title="Test one device at a time">
+    Isolate issues by testing devices individually
+  </Step>
+  <Step title="Update firmware">
+    Keep both interface and fixtures updated
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Device Not Detected
+
+<AccordionGroup>
+  <Accordion title="Verify USB connection">
+    - Try different USB port (prefer USB 2.0)
+    - Use high-quality USB cable
+    - Avoid USB hubs if possible
+  </Accordion>
+  <Accordion title="Check drivers">
+    **Windows:** Device Manager should show "USB Serial Converter"
+    
+    **Linux:** Check with `lsusb | grep 0403:6001`
+    
+    **macOS:** System Information > USB should show device
+  </Accordion>
+  <Accordion title="Verify permissions (Linux)">
+    ```bash
+    # Check udev rules
+    ls -l /dev/bus/usb/
+    
+    # Verify user in dialout group
+    groups $USER
+    ```
+  </Accordion>
+  <Accordion title="Test with DMXKing software">
+    Download DMXKing's test utility to verify hardware
+  </Accordion>
+</AccordionGroup>
+
+### Port 2 Not Working
+
+1. **Verify port configuration** - Check port is configured as output
+2. **Check QLC+ patching** - Ensure universe is patched to second output line
+3. **Test Port 1 first** - Confirm Port 1 works before troubleshooting Port 2
+4. **Swap ports** - Test DMX cable on Port 1 to isolate cable/fixture issues
+
+### RDM Discovery Fails
+
+<Steps>
+  <Step title="Verify RDM-capable fixtures">
+    Not all DMX fixtures support RDM - check specifications
+  </Step>
+  <Step title="Test one fixture">
+    Connect single RDM fixture to isolate issues
+  </Step>
+  <Step title="Check termination">
+    RDM requires proper 120Ω termination
+  </Step>
+  <Step title="Inspect cables">
+    Verify pin 4 and 5 are wired (some cheap cables omit these)
+  </Step>
+  <Step title="Reduce cable length">
+    Long cable runs can cause RDM issues
+  </Step>
+</Steps>
+
+### Performance Issues
+
+**Symptoms:**
+- Flickering lights
+- Delayed response
+- Dropped frames
+
+**Solutions:**
+1. **Use direct USB connection** - Avoid hubs
+2. **Check USB bandwidth** - Multiple USB devices can saturate bus
+3. **Update drivers** - Ensure latest FTDI drivers
+4. **Verify output frequency** - Should be 44Hz (default)
+5. **Check computer performance** - Ensure QLC+ has adequate CPU
+
+## Advanced Features
+
+### Custom Output Frequency
+
+Adjust DMX refresh rate:
+
+```cpp
+virtual void setOutputFrequency(int frequency);
+```
+
+DMXKing supports:
+- 25Hz - Very slow (theatrical)
+- 30Hz - Slow
+- 40Hz - Standard
+- 44Hz - DMX specification (default)
+
+### Multiple ultraDMX Pro Devices
+
+Run multiple interfaces simultaneously:
+
+1. Connect devices one at a time
+2. Note serial numbers for identification  
+3. Patch QLC+ universes:
+   - Universe 1: Device 1, Port 1
+   - Universe 2: Device 1, Port 2
+   - Universe 3: Device 2, Port 1
+   - Universe 4: Device 2, Port 2
+
+**Total capacity:** 2048 channels (4 universes × 512 channels)
+
+### External Power
+
+The ultraDMX Pro can use external power:
+
+**Benefits of external power:**
+- More stable operation
+- Better isolation
+- Doesn't load USB bus
+
+**Power specifications:**
+- Voltage: 9-12V DC
+- Current: 200mA
+- Connector: 2.1mm barrel jack (center positive)
+
+<Note>
+External power is optional - the device works fine on USB bus power for most applications.
+</Note>
+
+## Comparison with ENTTEC
+
+| Feature | DMXKing ultraDMX Pro | ENTTEC Pro Mk2 |
+|---------|---------------------|----------------|
+| **DMX Outputs** | 2 | 2 |
+| **DMX Inputs** | 1 | 1 |
+| **MIDI I/O** | No | Yes |
+| **RDM** | Yes (both ports) | Yes (both ports) |
+| **Isolation** | 2500V | Unknown |
+| **Network Forward** | Yes | No |
+| **External Power** | Yes | No |
+| **Price** | $$ | $$$ |
+
+**Choose DMXKing ultraDMX Pro if:**
+- Need network forwarding
+- Want external power option
+- Don't need MIDI
+- Budget-conscious
+
+**Choose ENTTEC Pro Mk2 if:**
+- Need MIDI I/O
+- Established ENTTEC ecosystem
+- Prefer XLR-5 connectors throughout
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="DMX USB Plugin" icon="usb" href="/plugins/dmx-usb">
+    Main DMX USB plugin documentation
+  </Card>
+  <Card title="ENTTEC Devices" icon="microchip" href="/plugins/enttec">
+    ENTTEC hardware support
+  </Card>
+  <Card title="Plugin Overview" icon="plug" href="/plugins/overview">
+    Learn about the plugin architecture
+  </Card>
+</CardGroup>

@@ -1,0 +1,347 @@
+---
+title: "Audio Functions"
+description: "Audio playback and spectrum analysis integration for synchronized lighting"
+---
+
+## Overview
+
+QLC+ integrates audio playback and analysis capabilities to enable sound-reactive and music-synchronized lighting. Audio functions can be placed in Shows for synchronized playback, and the audio spectrum can drive RGB Matrix effects.
+
+<Note>
+Audio functionality is primarily implemented through the RGBAudio class and audio-reactive RGB Matrix algorithms.
+</Note>
+
+## Audio in Shows
+
+Audio files can be placed on Show tracks:
+
+```xml
+<Track ID="0" Name="Music Track">
+  <ShowFunction ID="0" 
+                Function="50"   <!-- Audio function ID -->
+                StartTime="0" 
+                Duration="180000"   <!-- 3 minutes -->
+                Locked="1"/>
+</Track>
+```
+
+### Supported Formats
+
+Depends on the underlying media framework:
+- **MP3**: MPEG audio layer 3
+- **WAV**: Waveform audio
+- **OGG**: Ogg Vorbis
+- **FLAC**: Free Lossless Audio Codec
+- **AAC**: Advanced Audio Coding
+- **M4A**: MPEG-4 audio
+
+## Audio Spectrum Analysis
+
+The RGBAudio class provides real-time spectrum analysis:
+
+```cpp
+class RGBAudio : public RGBAlgorithm {
+public:
+    // Frequency band data
+    struct AudioData {
+        QVector<float> bands;     // Magnitude per frequency band
+        float peakLevel;          // Overall peak level
+        float averageLevel;       // Average level
+    };
+    
+    // Get current audio data
+    AudioData getAudioData() const;
+};
+```
+
+## Audio-Reactive RGB Matrix
+
+Use audio spectrum to drive pixel effects:
+
+### Audio Spectrum Algorithm
+
+The built-in "Audio Spectrum" algorithm visualizes frequency bands:
+
+```xml
+<Function Type="RGBMatrix" Name="Audio Visualizer">
+  <Algorithm Type="Script">Audio Spectrum</Algorithm>
+  <FixtureGroup>0</FixtureGroup>
+  <Property Name="bands" Value="16"/>           <!-- Number of frequency bands -->
+  <Property Name="sensitivity" Value="50"/>    <!-- Response sensitivity -->
+  <Property Name="decay" Value="10"/>          <!-- Peak decay rate -->
+</Function>
+```
+
+### Properties
+
+<ParamField path="bands" type="int" default="16">
+  Number of frequency bands to display (8-64)
+</ParamField>
+
+<ParamField path="sensitivity" type="int" default="50">
+  Input sensitivity (0-100). Higher values respond to quieter sounds.
+</ParamField>
+
+<ParamField path="decay" type="int" default="10">
+  Peak hold and decay rate (0-100). Lower values create smoother motion.
+</ParamField>
+
+<ParamField path="orientation" type="string" default="Vertical">
+  Display orientation: "Vertical" or "Horizontal"
+</ParamField>
+
+## Audio Levels Algorithm
+
+Simplified audio-reactive effect:
+
+```xml
+<Function Type="RGBMatrix" Name="Audio Levels">
+  <Algorithm Type="Script">Audio Levels</Algorithm>
+  <Property Name="type" Value="Bar"/>          <!-- Bar, Dot, or Wave -->
+  <Property Name="sensitivity" Value="75"/>
+</Function>
+```
+
+### Display Types
+
+- **Bar**: Vertical bar graph of audio level
+- **Dot**: Single pixel following audio level  
+- **Wave**: Waveform visualization
+- **Center**: Symmetric expansion from center
+
+## Integration with Chasers
+
+Create audio-triggered chaser steps:
+
+```cpp
+// Pseudo-code: React to audio level
+if (audioLevel > threshold) {
+    chaser.setAction(ChaserStepForward);
+}
+```
+
+While direct audio triggering isn't built-in, you can:
+1. Use Shows with synchronized audio
+2. Script audio-reactive behavior
+3. Use audio spectrum in RGB Matrix
+
+## Audio File Management
+
+### File Paths
+
+Audio files can be:
+- Absolute paths: `/path/to/audio.mp3`
+- Relative to project: `../audio/track.mp3`
+- URLs: `http://example.com/audio.mp3`
+
+### Path Normalization
+
+```cpp
+// Save with relative path
+QString relativePath = doc->normalizeComponentPath(audioPath);
+
+// Load with absolute path resolution
+QString absolutePath = doc->denormalizeComponentPath(relativePath);
+```
+
+## Audio Codec Information
+
+Audio functions store codec metadata:
+
+```cpp
+class Audio {
+public:
+    QString audioCodec() const;       // e.g., "mp3", "vorbis"
+    void setAudioCodec(QString codec);
+    
+    quint32 totalDuration();          // Duration in milliseconds
+    void setTotalDuration(quint32 ms);
+};
+```
+
+## Volume Control
+
+Audio volume is controlled via attributes:
+
+```cpp
+enum AudioAttr {
+    Volume = 1    // Volume attribute (0-100)
+};
+
+// Adjust volume
+audio->adjustAttribute(0.75, Volume);  // 75% volume
+```
+
+## Beat Detection
+
+For beat-synced lighting:
+
+```cpp
+// Shows support BPM time division
+show->setTimeDivision(Show::BPM_4_4, 120);  // 120 BPM, 4/4 time
+```
+
+This allows:
+- Functions triggered on beats
+- Beat-synced chaser steps
+- Tempo-matched effects
+
+## Audio Playback States
+
+```cpp
+class Audio {
+public:
+    void preRun(MasterTimer*);           // Start playback
+    void setPause(bool enable);          // Pause/resume
+    void postRun(MasterTimer*, ...);     // Stop playback
+};
+```
+
+### State Signals
+
+```cpp
+signals:
+    void requestPlayback();              // Begin playback
+    void requestPause(bool enable);      // Pause state change
+    void requestStop();                  // Stop playback
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Pre-analyze Audio">
+    Test audio levels and adjust sensitivity before the show
+  </Step>
+  <Step title="Use Appropriate Band Count">
+    More bands = more detail but higher CPU usage. 16-32 is typical.
+  </Step>
+  <Step title="Lock Audio in Timeline">
+    Always lock audio ShowFunctions to prevent accidental movement
+  </Step>
+  <Step title="Set Proper Decay">
+    Match decay rate to music tempo for smooth motion
+  </Step>
+  <Step title="Test Sensitivity">
+    Ensure audio response isn't too sensitive (clipping) or too dull
+  </Step>
+</Steps>
+
+## Common Use Cases
+
+### DJ Booth Backdrop
+
+```xml
+<Function Type="RGBMatrix" Name="Spectrum Wall">
+  <Algorithm Type="Script">Audio Spectrum</Algorithm>
+  <FixtureGroup>0</FixtureGroup>  <!-- LED wall -->
+  <Property Name="bands" Value="32"/>
+  <Property Name="sensitivity" Value="60"/>
+  <Property Name="orientation" Value="Horizontal"/>
+</Function>
+```
+
+### Music-Synced Show
+
+```xml
+<Function Type="Show" Name="Song Performance">
+  <TimeDivision Type="Time" BPM="120"/>
+  <Track ID="0" Name="Audio">
+    <ShowFunction Function="50" StartTime="0" Duration="180000"/>
+  </Track>
+  <Track ID="1" Name="Lighting">
+    <ShowFunction Function="1" StartTime="0" Duration="5000"/>
+    <ShowFunction Function="2" StartTime="5000" Duration="8000"/>
+    <!-- More cues synced to audio -->
+  </Track>
+</Function>
+```
+
+### Beat-Reactive Chaser
+
+Use RGB Matrix with audio to trigger scene changes:
+
+```xml
+<Function Type="RGBMatrix" Name="Beat Flash">
+  <Algorithm Type="Script">Audio Levels</Algorithm>
+  <Property Name="type" Value="Dot"/>
+  <Property Name="sensitivity" Value="80"/>  <!-- High sensitivity for beats -->
+</Function>
+```
+
+## Limitations
+
+<Warning>
+Audio functionality has these limitations:
+
+1. **Platform-Dependent**: Available codecs vary by OS
+2. **No MIDI**: No direct MIDI audio input support
+3. **Single Audio Track**: Only one audio source per Show
+4. **No Live Input**: Cannot use microphone input directly
+5. **Fixed Bands**: Spectrum bands are fixed frequency ranges
+</Warning>
+
+## Performance Considerations
+
+- Audio spectrum analysis is CPU-intensive
+- Higher band counts increase processing overhead
+- Decay calculations add per-frame cost
+- Audio playback uses separate audio thread
+
+## Platform Differences
+
+### Windows
+- Uses DirectShow or Windows Media Foundation
+- Good codec support
+- Low latency
+
+### macOS
+- Uses AVFoundation
+- Excellent codec support
+- Very low latency
+
+### Linux
+- Uses GStreamer or PulseAudio
+- Codec support depends on installed plugins
+- Variable latency
+
+## Troubleshooting
+
+### Audio Not Playing
+
+<Steps>
+  <Step>
+    Verify file format is supported on your platform
+  </Step>
+  <Step>
+    Check file path is correct (absolute or relative)
+  </Step>
+  <Step>
+    Ensure audio output device is configured
+  </Step>
+  <Step>
+    Test file in standalone media player
+  </Step>
+</Steps>
+
+### Spectrum Not Responsive
+
+<Steps>
+  <Step>
+    Increase sensitivity value
+  </Step>
+  <Step>
+    Verify audio is playing with sufficient volume
+  </Step>
+  <Step>
+    Check that audio input is being captured
+  </Step>
+  <Step>
+    Reduce decay value for faster response
+  </Step>
+</Steps>
+
+## See Also
+
+- [RGB Matrix](/functions/rgb-matrix) - Pixel effects for audio visualization
+- [Shows](/functions/shows) - Timeline-based audio synchronization
+- [Video](/functions/video) - Video playback with audio

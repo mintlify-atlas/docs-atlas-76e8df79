@@ -1,0 +1,393 @@
+---
+title: Button Widgets
+description: Use button widgets to trigger functions and control lighting in QLC+
+---
+
+Button widgets are the most commonly used controls in Virtual Console. They provide simple one-click operation to start, stop, or flash lighting functions. Buttons are defined in `ui/src/virtualconsole/vcbutton.h` and `vcbutton.cpp`.
+
+## Overview
+
+Button widgets can:
+
+- Start and stop functions (scenes, chasers, sequences, etc.)
+- Flash functions while held down
+- Toggle blackout on/off
+- Act as panic buttons to stop all running functions
+- Display custom icons and colors
+- Respond to keyboard shortcuts and external controllers
+
+## Button Actions
+
+Buttons support four different action modes:
+
+### Toggle Mode
+
+The default mode for starting and stopping functions:
+
+- **First Click**: Start the assigned function
+- **Second Click**: Stop the function
+- **LED Style**: Button shows active/inactive state with color
+- **Best For**: Scenes, chasers, sequences, shows
+
+### Flash Mode
+
+Temporary activation while button is held:
+
+- **Press Down**: Start function at full intensity
+- **Release**: Stop function immediately
+- **Flash Override**: Option to override newer values (HTP channels)
+- **Force LTP**: Make flash channels behave as LTP channels
+- **Best For**: Strobe effects, temporary lighting states
+
+```cpp
+enum Action { Toggle, Flash, Blackout, StopAll };
+```
+
+Source: `vcbutton.h:262`
+
+### Blackout Mode
+
+Toggle the global blackout state:
+
+- **Click**: Toggle blackout on/off
+- **No Function**: Doesn't require a function assignment
+- **Fade Time**: Optional fade out time when activating blackout
+- **Best For**: Emergency blackout, scene transitions
+
+### Stop All Mode
+
+Panic button to stop everything:
+
+- **Click**: Stop all running functions
+- **No Function**: Doesn't require a function assignment  
+- **Fade Time**: Optional fade out time for graceful stop
+- **Best For**: Emergency stop, end of show
+
+## Button States
+
+Buttons display their state through visual feedback:
+
+```cpp
+enum ButtonState
+{
+    Inactive,    // Function is stopped
+    Monitoring,  // Function running but not controlled by this button
+    Active       // Function running and controlled by this button
+};
+```
+
+Source: `vcbutton.h:210-215`
+
+### State Colors
+
+- **Inactive**: Normal background color
+- **Monitoring**: Dimmed indicator showing function is running elsewhere
+- **Active**: Bright color indicating button is controlling the function
+
+The button updates its state through the `updateState()` method, which queries the function manager to check if the assigned function is running.
+
+## Function Attachment
+
+Buttons control functions through a simple ID-based system:
+
+```cpp
+void setFunction(quint32 function);
+quint32 function() const;
+```
+
+Source: `vcbutton.h:182-190`
+
+<Steps>
+  <Step title="Open Button Properties">
+    Right-click the button and select "Edit Properties"
+  </Step>
+  <Step title="Choose Function">
+    Click the "Choose" button next to the Function field
+  </Step>
+  <Step title="Select from List">
+    Pick a function from your workspace (Scene, Chaser, etc.)
+  </Step>
+  <Step title="Configure Action">
+    Choose Toggle, Flash, Blackout, or StopAll mode
+  </Step>
+</Steps>
+
+## Startup Intensity
+
+Buttons can adjust the intensity when starting a function:
+
+```cpp
+void enableStartupIntensity(bool enable);
+bool isStartupIntensityEnabled() const;
+void setStartupIntensity(qreal fraction);  // 0.0 - 1.0
+qreal startupIntensity() const;
+```
+
+Source: `vcbutton.h:283-304`
+
+<Note>
+Startup intensity only affects HTP (Highest Takes Precedence) channels. LTP channels like pan/tilt are not affected by this setting.
+</Note>
+
+Example use cases:
+
+- Start a scene at 50% brightness
+- Bring up lights gradually by starting at low intensity
+- Create subtle lighting states without modifying the original function
+
+## Flash Properties
+
+When using Flash mode, additional options control behavior:
+
+### Flash Override
+
+Determines whether flash channels override newer values:
+
+```cpp
+bool flashOverrides() const;
+void setFlashOverride(bool shouldOverride);
+```
+
+Source: `vcbutton.h:317-320`
+
+- **Enabled**: Flash values override any newer values (even from other running functions)
+- **Disabled**: Flash respects HTP rules and may not be visible if other functions have higher values
+
+### Flash Force LTP
+
+Makes flash channels behave as LTP (Latest Takes Precedence):
+
+```cpp
+bool flashForceLTP() const;
+void setFlashForceLTP(bool forceLTP);
+```
+
+Source: `vcbutton.h:321-324`
+
+Useful for:
+
+- Flashing moving head positions
+- Temporarily forcing specific colors
+- Overriding color channels during flash
+
+## Appearance Customization
+
+### Button Icon
+
+Buttons can display custom icons:
+
+```cpp
+QString iconPath() const;
+void setIconPath(const QString& iconPath);
+```
+
+Source: `vcbutton.h:147-153`
+
+- Icons are displayed centered on the button
+- Supported formats: PNG, JPG, SVG, BMP
+- Icons scale to fit the button size
+- Icon size is calculated based on button dimensions
+
+### Background Color
+
+Custom colors for different states:
+
+```cpp
+void setBackgroundColor(const QColor& color);
+QColor backgroundColor() const;
+void resetBackgroundColor();
+```
+
+Source: `vcbutton.h:119-128`
+
+- Set different colors for active and inactive states
+- Use LED-style visual feedback
+- Reset to system default colors
+
+### Background Image
+
+Alternative to solid colors:
+
+```cpp
+void setBackgroundImage(const QString& path);
+```
+
+Source: `vcbutton.h:109-112`
+
+- Full-size image fills button background
+- Image is stretched to fit button dimensions
+- Overrides background color when set
+
+## External Control
+
+### Keyboard Shortcuts
+
+Assign keyboard combinations to buttons:
+
+```cpp
+void setKeySequence(const QKeySequence& keySequence);
+QKeySequence keySequence() const;
+```
+
+Source: `vcbutton.h:233-234`
+
+Examples:
+
+- Single keys: `Space`, `Enter`, `A`, `1`
+- Combinations: `Ctrl+A`, `Shift+F1`, `Alt+Space`
+- Function keys: `F1`, `F2`, etc.
+
+<Note>
+Some key combinations are reserved by the operating system and may not be available for use in QLC+.
+</Note>
+
+### External Input
+
+Connect MIDI controllers, OSC, or other input devices:
+
+- Button responds to configured input universe/channel
+- Value thresholds determine activation
+- Feedback sent back to controller (LED indicators)
+- Input is processed through `slotInputValueChanged()`
+
+The button checks input through the inherited `checkInputSource()` method from `VCWidget`.
+
+## Solo Frame Integration
+
+Buttons behave specially when placed inside a Solo Frame:
+
+- Starting a button's function stops all sibling button functions
+- Only one function runs at a time within the solo frame
+- Useful for mutually exclusive lighting states
+- Checked via `isChildOfSoloFrame()` method
+
+Source: `vcbutton.h:365`
+
+Example scenario:
+
+```
+Solo Frame
+├── Button 1: Red Scene
+├── Button 2: Blue Scene  
+└── Button 3: Green Scene
+```
+
+Activating any button automatically stops the others.
+
+## Button Press/Release Handlers
+
+Internal methods manage button activation:
+
+```cpp
+void pressFunction();   // Mouse/key down
+void releaseFunction(); // Mouse/key up
+void blink(int ms);     // Brief visual feedback
+```
+
+Source: `vcbutton.h:336-342`
+
+These methods:
+
+- Handle toggle vs. flash logic
+- Notify solo frame parents
+- Apply startup intensity
+- Send feedback to controllers
+- Update button visual state
+
+## Signal Connections
+
+Buttons monitor function state through signals:
+
+```cpp
+protected slots:
+    void slotFunctionRunning(quint32 fid);
+    void slotFunctionStopped(quint32 fid);
+    void slotFunctionFlashing(quint32 fid, bool state);
+    void slotBlackoutChanged(bool state);
+```
+
+Source: `vcbutton.h:349-361`
+
+These slots:
+
+- Update button state when function starts/stops
+- Synchronize with functions started elsewhere
+- Handle blackout mode state changes
+- Trigger brief blink when function stops
+
+## XML Persistence
+
+Buttons save their configuration to workspace files:
+
+```xml
+<Button ID="0">
+    <WindowState X="10" Y="10" Width="60" Height="60" />
+    <Appearance>
+        <BackgroundColor>#FF0000</BackgroundColor>
+        <Font>Arial,12,-1,5,50,0,0,0,0,0</Font>
+    </Appearance>
+    <Function ID="5"/>
+    <Action>Toggle</Action>
+    <Intensity Adjust="False">100</Intensity>
+    <Key>F1</Key>
+    <Input Universe="0" Channel="0"/>
+</Button>
+```
+
+Key XML elements:
+
+- `WindowState`: Position and size
+- `Appearance`: Colors, fonts, images
+- `Function`: Assigned function ID
+- `Action`: Toggle, Flash, Blackout, or StopAll
+- `Intensity`: Startup intensity settings
+- `Key`: Keyboard shortcut
+- `Input`: External control source
+
+## Button Matrix
+
+Multiple buttons can be created at once:
+
+- Access via "Add Button Matrix" menu
+- Creates a grid of buttons
+- Each button can control a different function
+- Useful for scenes, fixtures, or chaser steps
+- Implemented in `addvcbuttonmatrix.cpp`
+
+<Note>
+The button matrix wizard is a time-saving tool when you need to create many buttons at once, such as when controlling multiple fixtures or creating a scene palette.
+</Note>
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Scene Trigger" icon="lightbulb">
+    Toggle mode button to activate lighting scenes on stage
+  </Card>
+  <Card title="Strobe Flash" icon="bolt">
+    Flash mode button for temporary strobe effects
+  </Card>
+  <Card title="Emergency Stop" icon="hand">
+    StopAll button as a panic button at the end of shows
+  </Card>
+  <Card title="Blackout Control" icon="moon">
+    Blackout mode for quick fade-to-black transitions
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<Steps>
+  <Step title="Create a Button">
+    Add a button to your Virtual Console and assign a function
+  </Step>
+  <Step title="Customize Appearance">
+    Set colors, icons, and fonts to match your interface design
+  </Step>
+  <Step title="Add Keyboard Control">
+    Assign keyboard shortcuts for quick access during shows
+  </Step>
+  <Step title="Configure External Input">
+    Connect MIDI or OSC controllers for hands-free operation
+  </Step>
+</Steps>

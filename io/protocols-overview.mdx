@@ -1,0 +1,520 @@
+---
+title: Protocol Overview
+description: Overview of supported lighting control protocols in QLC+
+---
+
+QLC+ supports a wide range of lighting control protocols through its plugin architecture. Each protocol is implemented as a plugin that handles input, output, or both directions of communication.
+
+## Plugin Architecture
+
+All I/O plugins implement the `QLCIOPlugin` interface:
+
+```cpp
+class QLCIOPlugin : public QObject {
+    virtual void init() = 0;
+    virtual QString name() const = 0;
+    virtual int capabilities() const = 0;
+    virtual QString pluginInfo() const = 0;
+};
+```
+
+### Plugin Capabilities
+
+Plugins declare their capabilities as a bitmask:
+
+```cpp
+enum Capability {
+    Output      = 1 << 0,  // DMX output
+    Input       = 1 << 1,  // Input from controllers
+    Feedback    = 1 << 2,  // Visual feedback to devices
+    Infinite    = 1 << 3,  // Unlimited universes
+    RDM         = 1 << 4,  // Remote Device Management
+    Beats       = 1 << 5   // Beat generation
+};
+```
+
+<Note>
+A single plugin can support multiple capabilities. For example, Art-Net supports both input and output.
+</Note>
+
+## Network Protocols
+
+### Art-Net
+
+**Protocol:** Art-Net (DMX over Ethernet)
+**Plugin:** `artnet`
+**Capabilities:** Output, Input, Infinite
+
+```cpp
+class ArtNetPlugin : public QLCIOPlugin {
+    // Supports multiple universes over Ethernet
+    // Standard Art-Net port: 6454 (UDP)
+};
+```
+
+**Key Features:**
+- Industry-standard DMX over Ethernet protocol
+- Supports up to 32,768 universes (Art-Net 4)
+- Broadcast and unicast transmission modes
+- Auto-discovery of Art-Net nodes
+- Configurable universe mapping
+
+**Configuration Parameters:**
+- `inputUni` - Input universe number
+- `outputIP` - Target IP address for output
+- `outputUni` - Output universe number
+- `transmitMode` - Broadcast or unicast mode
+
+<CardGroup cols={2}>
+  <Card title="Use Cases" icon="network-wired">
+    - Multi-universe installations
+    - Distributed lighting systems
+    - Networked lighting control
+    - Integration with professional consoles
+  </Card>
+  <Card title="Network Requirements" icon="ethernet">
+    - Gigabit Ethernet recommended
+    - Low-latency network switches
+    - Proper VLAN configuration
+    - Multicast support (for broadcast mode)
+  </Card>
+</CardGroup>
+
+### sACN (E1.31)
+
+**Protocol:** Streaming ACN (ANSI E1.31)
+**Plugin:** `E1.31`
+**Capabilities:** Output, Input, Infinite
+
+**Key Features:**
+- ANSI standard for DMX over IP
+- Priority-based source selection
+- Universe discovery protocol
+- Multicast and unicast modes
+- Compatible with Art-Net infrastructure
+
+**Advantages:**
+- Open standard (no licensing)
+- Better conflict resolution than Art-Net
+- Built-in priority handling
+- Supports up to 63,999 universes
+
+### OSC (Open Sound Control)
+
+**Protocol:** Open Sound Control
+**Plugin:** `osc`
+**Capabilities:** Input, Output, Feedback
+
+**Key Features:**
+- Flexible, extensible protocol
+- Human-readable addressing
+- Works with TouchOSC, Lemur, and similar apps
+- Bidirectional communication
+- Custom message formats
+
+**Example OSC Addresses:**
+```
+/qlc/fader/1
+/qlc/button/scene/1
+/qlc/master
+```
+
+### OS2L
+
+**Protocol:** ShowXpress OS2L
+**Plugin:** `os2l`
+**Capabilities:** Input, Output
+
+**Key Features:**
+- ShowXpress and SweetLight protocol
+- Network-based control
+- Designed for iOS/Android control
+
+## USB/Serial Protocols
+
+### DMX USB
+
+**Plugin:** `dmxusb`
+**Capabilities:** Output, Input, RDM (device-dependent)
+
+**Supported Devices:**
+
+<CardGroup cols={2}>
+  <Card title="Enttec" icon="usb-drive">
+    - Open DMX USB
+    - DMX USB Pro
+    - DMX USB Pro Mk2
+  </Card>
+  <Card title="Other Manufacturers" icon="plug">
+    - DMXKing ultraDMX
+    - Eurolite USB-DMX512
+    - Velleman K8062
+  </Card>
+</CardGroup>
+
+```cpp
+class DMXUSBWidget {
+    // Base class for DMX USB devices
+    virtual bool open() = 0;
+    virtual bool close() = 0;
+    virtual bool writeUniverse(const QByteArray& data) = 0;
+};
+```
+
+**Key Features:**
+- Direct USB connection
+- Low latency
+- Compact hardware
+- RDM support (Pro models)
+- Galvanic isolation (most models)
+
+### MIDI
+
+**Plugin:** `midi`
+**Capabilities:** Input, Output, Feedback, Beats
+
+**Key Features:**
+- MIDI Note, Control Change, and Program Change
+- Beat clock generation and synchronization
+- Support for MIDI show control
+- Channel routing and filtering
+- Feedback to LED rings and motorized faders
+
+**MIDI Message Types:**
+- **Note On/Off** - Buttons and triggers
+- **Control Change** - Faders and knobs
+- **Program Change** - Scene selection
+- **Clock** - BPM synchronization
+
+### HID (Human Interface Device)
+
+**Plugin:** `hid`
+**Capabilities:** Input, Feedback
+
+**Key Features:**
+- Generic USB HID device support
+- Custom controller support
+- Joystick and gamepad input
+- LED feedback for supported devices
+
+## DMX Hardware Interfaces
+
+### DMX4Linux
+
+**Plugin:** `dmx4linux`
+**Capabilities:** Output, Input
+
+**Key Features:**
+- Native Linux DMX driver support
+- Direct kernel interface
+- Low-level hardware access
+- High performance
+
+### Peperoni
+
+**Plugin:** `peperoni`
+**Capabilities:** Output, Input
+
+**Key Features:**
+- Peperoni Lighting DMX interfaces
+- Multiple universe support
+- Windows and Linux support
+
+### OLA (Open Lighting Architecture)
+
+**Plugin:** `ola`
+**Capabilities:** Output, Input, RDM
+
+**Key Features:**
+- Integration with Open Lighting Architecture
+- Supports 100+ devices through OLA
+- RDM device configuration
+- Plugin-based architecture
+- Cross-platform compatibility
+
+<Note>
+OLA acts as a middleware layer, allowing QLC+ to access dozens of lighting protocols and devices through a single plugin.
+</Note>
+
+## Specialized Protocols
+
+### Enttec Wing
+
+**Plugin:** `enttecwing`
+**Capabilities:** Input
+
+**Supported Devices:**
+- Enttec Shortcut Wing
+- Enttec Playback Wing
+- Enttec Program Wing
+
+**Key Features:**
+- Dedicated control surfaces
+- Motorized faders (Playback Wing)
+- LED feedback
+- USB connection
+
+### SPI (Serial Peripheral Interface)
+
+**Plugin:** `spi`
+**Capabilities:** Output
+
+**Key Features:**
+- Direct control of LED strips
+- Support for WS2801, APA102, etc.
+- Raspberry Pi GPIO output
+- High-speed serial communication
+
+**Common Uses:**
+- Pixel mapping
+- LED strip control
+- Embedded systems
+- Low-cost installations
+
+### UART (Serial)
+
+**Plugin:** `uart`
+**Capabilities:** Output
+
+**Key Features:**
+- Serial port DMX output
+- Arduino/embedded system integration
+- Custom protocol support
+- RS-232/RS-485 interfaces
+
+### GPIO
+
+**Plugin:** `gpio`
+**Capabilities:** Input, Output
+
+**Key Features:**
+- Raspberry Pi GPIO pins
+- Direct hardware control
+- Button and LED interfacing
+- Custom hardware integration
+
+## Plugin Operations
+
+### Opening and Closing Lines
+
+Plugins manage input/output lines:
+
+```cpp
+// Output operations
+virtual bool openOutput(quint32 output, quint32 universe);
+virtual void closeOutput(quint32 output, quint32 universe);
+virtual void writeUniverse(quint32 universe, quint32 output, 
+                          const QByteArray& data, bool dataChanged);
+
+// Input operations
+virtual bool openInput(quint32 input, quint32 universe);
+virtual void closeInput(quint32 input, quint32 universe);
+```
+
+### Input Value Signal
+
+Plugins emit signals when input values change:
+
+```cpp
+signals:
+    void valueChanged(quint32 universe, quint32 input, 
+                     quint32 channel, uchar value, 
+                     const QString& key = 0);
+```
+
+### Feedback
+
+Send visual feedback to input devices:
+
+```cpp
+virtual void sendFeedBack(quint32 universe, quint32 inputLine,
+                         quint32 channel, uchar value, 
+                         const QVariant& params);
+```
+
+## Plugin Parameters
+
+Plugins can accept custom parameters:
+
+```cpp
+virtual void setParameter(quint32 universe, quint32 line, 
+                         Capability type,
+                         QString name, QVariant value);
+
+virtual void unSetParameter(quint32 universe, quint32 line, 
+                           Capability type, QString name);
+
+virtual QMap<QString, QVariant> getParameters(
+    quint32 universe, quint32 line, Capability type) const;
+```
+
+**Common Parameters:**
+- IP addresses (network plugins)
+- Universe numbers
+- Transmission modes
+- Device-specific settings
+
+## RDM Support
+
+Some plugins support RDM (Remote Device Management):
+
+```cpp
+virtual bool sendRDMCommand(quint32 universe, quint32 line, 
+                           uchar command, QVariantList params);
+
+signals:
+    void rdmValueChanged(quint32 universe, quint32 line, 
+                        QVariantMap data);
+```
+
+**RDM Capabilities:**
+- Device discovery
+- Parameter reading and setting
+- DMX addressing configuration
+- Device information queries
+
+## Protocol Selection Guide
+
+<CardGroup cols={2}>
+  <Card title="Small Installations" icon="home">
+    **Recommended:** DMX USB, Enttec interfaces
+    
+    Simple, reliable, cost-effective for single-universe setups.
+  </Card>
+  
+  <Card title="Medium Installations" icon="building">
+    **Recommended:** Art-Net, sACN
+    
+    Multiple universes, flexible routing, expandable infrastructure.
+  </Card>
+  
+  <Card title="Large Installations" icon="city">
+    **Recommended:** Art-Net, sACN with OLA
+    
+    Distributed control, redundancy, professional-grade reliability.
+  </Card>
+  
+  <Card title="Mobile Setups" icon="van-shuttle">
+    **Recommended:** DMX USB, MIDI controllers
+    
+    Portable, quick setup, minimal infrastructure requirements.
+  </Card>
+  
+  <Card title="Embedded Systems" icon="microchip">
+    **Recommended:** SPI, GPIO, UART
+    
+    Direct hardware control, custom integration, low power.
+  </Card>
+  
+  <Card title="Control Surfaces" icon="sliders">
+    **Recommended:** MIDI, OSC, HID
+    
+    Interactive control, feedback, touch interfaces.
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+### Network Protocols
+
+- Use dedicated network infrastructure for lighting
+- Configure proper QoS and VLAN settings
+- Monitor network bandwidth and latency
+- Use unicast for specific routing needs
+- Test failover scenarios
+
+### USB Protocols
+
+- Use quality USB cables (short as possible)
+- Avoid USB hubs when possible
+- Check for driver conflicts
+- Test USB power requirements
+- Keep firmware updated
+
+### Performance
+
+- Match protocol to your needs (don't over-engineer)
+- Monitor CPU usage with multiple universes
+- Optimize update rates
+- Close unused plugin lines
+- Test worst-case scenarios
+
+### Compatibility
+
+- Verify protocol versions
+- Test with actual hardware before deployment
+- Document plugin configurations
+- Keep backup configurations
+- Plan for equipment failures
+
+## Configuration Example
+
+Configuring plugins through the Input/Output Map:
+
+```cpp
+// Configure Art-Net output
+inputOutputMap->setOutputPatch(
+    0,                    // Universe 0
+    "Art-Net",           // Plugin name
+    "192.168.1.100",    // Network interface
+    0                     // Output line
+);
+
+// Set Art-Net parameters
+OutputPatch* patch = inputOutputMap->outputPatch(0);
+patch->setPluginParameter("outputIP", "192.168.1.50");
+patch->setPluginParameter("outputUni", 1);
+patch->setPluginParameter("transmitMode", "unicast");
+
+// Configure MIDI input
+inputOutputMap->setInputPatch(
+    0,                    // Universe 0
+    "MIDI",              // Plugin name
+    "USB MIDI Device",   // Device name
+    0,                    // Input line
+    "Behringer BCF2000"  // Input profile
+);
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No output on network protocols">
+    - Check network connectivity
+    - Verify firewall settings
+    - Confirm universe numbers match
+    - Test with network monitoring tools
+    - Check for IP conflicts
+  </Accordion>
+  
+  <Accordion title="USB device not detected">
+    - Verify drivers are installed
+    - Check USB cable and port
+    - Try different USB ports
+    - Check device permissions (Linux)
+    - Restart QLC+ and reconnect device
+  </Accordion>
+  
+  <Accordion title="MIDI not responding">
+    - Confirm MIDI routing
+    - Check MIDI channel settings
+    - Verify input profile is correct
+    - Test with MIDI monitor
+    - Check for MIDI conflicts with other software
+  </Accordion>
+  
+  <Accordion title="High latency or dropped frames">
+    - Reduce universe count
+    - Optimize network infrastructure
+    - Check CPU usage
+    - Disable unused plugins
+    - Use wired connections instead of wireless
+  </Accordion>
+</AccordionGroup>
+
+## Code References
+
+- Plugin Interface: `plugins/interfaces/qlcioplugin.h:90`
+- Plugin Cache: `engine/src/ioplugincache.h:34`
+- Art-Net Plugin: `plugins/artnet/src/artnetplugin.h:47`
+- DMX USB: `plugins/dmxusb/src/dmxusb.h`

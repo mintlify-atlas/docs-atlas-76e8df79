@@ -1,0 +1,337 @@
+---
+title: "Collections"
+description: "Simultaneous playback of multiple functions as a synchronized group"
+---
+
+## Overview
+
+A Collection is a function that starts multiple other functions simultaneously. Unlike Chasers which play functions sequentially, Collections run all member functions in parallel, making them perfect for creating complex lighting scenes from multiple components.
+
+<Note>
+Collections maintain control over their member functions and can stop them when the collection stops, making them ideal for creating grouped presets.
+</Note>
+
+## When to Use Collections
+
+<CardGroup cols={2}>
+  <Card title="Multi-Zone Control" icon="layer-group">
+    Activate different effects in multiple stage areas at once
+  </Card>
+  <Card title="Complex Scenes" icon="cubes">
+    Combine scenes, chasers, and effects into one preset
+  </Card>
+  <Card title="Synchronized Effects" icon="arrows-to-dot">
+    Start multiple coordinated functions with one button
+  </Card>
+  <Card title="Master Controls" icon="sliders">
+    Create master presets that control multiple subsystems
+  </Card>
+</CardGroup>
+
+## Key Properties
+
+The Collection class (collection.h:42) is simple but powerful:
+
+### Function List
+
+<ParamField path="m_functions" type="QList<quint32>">
+  List of function IDs to start simultaneously when the collection runs
+</ParamField>
+
+### Running Children Tracking
+
+```cpp
+private:
+    QSet<quint32> m_runningChildren;  // Currently running functions
+    QList<int> m_intensityOverrideIds;  // Intensity override IDs
+```
+
+The collection tracks which functions are still running to determine when to stop itself.
+
+## Class Methods
+
+### Function Management
+
+```cpp
+// Add a function to the collection
+bool addFunction(quint32 fid, int insertIndex = -1);
+
+// Remove a function from the collection
+bool removeFunction(quint32 fid);
+
+// Get list of all functions
+QList<quint32> functions() const;
+```
+
+<Note>
+A function cannot be added to a collection more than once. The collection also prevents adding itself to avoid circular references.
+</Note>
+
+### Hierarchy Check
+
+```cpp
+// Check if collection contains a function
+bool contains(quint32 functionId) const;
+
+// Get component list
+QList<quint32> components() const;
+```
+
+The `contains()` method recursively checks member functions, preventing indirect self-containment.
+
+### Duration
+
+```cpp
+// Get total duration (sum of longest running member)
+quint32 totalDuration();
+```
+
+Total duration is calculated as the longest duration of any member function.
+
+## Lifecycle Management
+
+Collections carefully manage their member functions:
+
+### Starting Functions
+
+```cpp
+void preRun(MasterTimer* timer) {
+    foreach (quint32 fid, m_functions) {
+        Function *function = doc()->function(fid);
+        
+        // Request intensity override
+        int overrideId = function->requestAttributeOverride(
+            Function::Intensity, 
+            getAttributeValue(Function::Intensity)
+        );
+        m_intensityOverrideIds << overrideId;
+        
+        // Track as running child
+        m_runningChildren << fid;
+        
+        // Start the function
+        function->start(timer, functionParent(), ...);
+    }
+}
+```
+
+### Stopping Functions
+
+```cpp
+void postRun(MasterTimer* timer, QList<Universe*> universes) {
+    // Stop only functions started by this collection
+    foreach (quint32 fid, m_runningChildren) {
+        Function *function = doc()->function(fid);
+        function->stop(functionParent());
+    }
+    
+    m_runningChildren.clear();
+    m_intensityOverrideIds.clear();
+}
+```
+
+<Warning>
+Collections only stop functions that they started. If a function was already running when the collection started, it will continue running after the collection stops.
+</Warning>
+
+## Intensity Control
+
+Collections apply master intensity to all members:
+
+```cpp
+int adjustAttribute(qreal fraction, int attributeId) {
+    if (attributeId == Intensity) {
+        // Update all running functions
+        for (int i = 0; i < m_functions.count(); i++) {
+            Function *function = doc()->function(m_functions.at(i));
+            function->adjustAttribute(
+                getAttributeValue(Function::Intensity),
+                m_intensityOverrideIds.at(i)
+            );
+        }
+    }
+    return attributeId;
+}
+```
+
+The collection uses intensity overrides to control members without permanently changing their settings.
+
+## Pause Control
+
+Collections propagate pause state:
+
+```cpp
+void setPause(bool enable) {
+    foreach (quint32 fid, m_runningChildren) {
+        Function *function = doc()->function(fid);
+        function->setPause(enable);
+    }
+    Function::setPause(enable);
+}
+```
+
+## Blend Mode Propagation
+
+Blend mode changes affect all members:
+
+```cpp
+void setBlendMode(Universe::BlendMode mode) {
+    if (isRunning()) {
+        foreach (quint32 fid, m_functions) {
+            Function *function = doc()->function(fid);
+            function->setBlendMode(mode);
+        }
+    }
+    Function::setBlendMode(mode);
+}
+```
+
+## Running State Tracking
+
+Collections track member function state:
+
+```cpp
+protected slots:
+    // Called when a child function stops
+    void slotChildStopped(quint32 fid) {
+        m_runningChildren.remove(fid);
+    }
+    
+    // Called when a child function starts
+    void slotChildStarted(quint32 fid) {
+        m_runningChildren << fid;
+    }
+```
+
+The collection automatically stops when all children have stopped:
+
+```cpp
+void write(MasterTimer* timer, QList<Universe*> universes) {
+    if (m_runningChildren.size() == 0) {
+        stop(functionParent());
+    }
+}
+```
+
+## XML Structure
+
+```xml
+<Function Type="Collection" ID="15" Name="Main Scene">
+  <Step Number="0">1</Step>   <!-- Scene ID 1 -->
+  <Step Number="1">5</Step>   <!-- EFX ID 5 -->
+  <Step Number="2">10</Step>  <!-- RGB Matrix ID 10 -->
+  <Step Number="3">20</Step>  <!-- Chaser ID 20 -->
+</Function>
+```
+
+<Note>
+The "Step" tag name is misleading - these are not sequential steps but simultaneous functions. The Number attribute indicates order in the list, not execution order.
+</Note>
+
+## Thread Safety
+
+Collections use a recursive mutex for thread-safe access:
+
+```cpp
+private:
+    QRecursiveMutex m_functionListMutex;
+```
+
+This protects against:
+- Concurrent function list modifications
+- Race conditions during start/stop
+- Thread-safe signal connections
+
+## Best Practices
+
+<Steps>
+  <Step title="Group Related Functions">
+    Only add functions that logically belong together
+  </Step>
+  <Step title="Avoid Deep Nesting">
+    Don't create collections of collections multiple levels deep
+  </Step>
+  <Step title="Test Function Compatibility">
+    Ensure member functions don't conflict (e.g., controlling same channels)
+  </Step>
+  <Step title="Use for Presets">
+    Collections make excellent preset buttons for complex looks
+  </Step>
+  <Step title="Monitor Intensity">
+    Remember that collection intensity multiplies with member intensities
+  </Step>
+</Steps>
+
+## Common Use Cases
+
+### Multi-Zone Activation
+
+```xml
+<Function Type="Collection" Name="Stage + Floor">
+  <Step>1</Step>  <!-- Stage scene -->
+  <Step>2</Step>  <!-- Floor scene -->
+</Function>
+```
+
+### Effect Combination
+
+```xml
+<Function Type="Collection" Name="Movement + Color">
+  <Step>10</Step>  <!-- EFX for movement -->
+  <Step>20</Step>  <!-- Chaser for color -->
+  <Step>30</Step>  <!-- RGB Matrix for background -->
+</Function>
+```
+
+### Master Preset
+
+```xml
+<Function Type="Collection" Name="Show Preset 1">
+  <Step>1</Step>   <!-- Front wash -->
+  <Step>5</Step>   <!-- Back lights -->
+  <Step>10</Step>  <!-- Moving heads -->
+  <Step>15</Step>  <!-- Strobes -->
+</Function>
+```
+
+## Limitations
+
+<Warning>
+Collections have these limitations:
+
+1. **No Timing Control**: All functions start simultaneously, no delays
+2. **No Individual Control**: Cannot pause/stop individual members
+3. **Memory Tracking**: Requires overhead to track running children
+4. **Self-Containment**: Cannot directly or indirectly contain itself
+</Warning>
+
+## Performance Considerations
+
+- Collections themselves have minimal overhead
+- Performance depends on member functions
+- Signal connections add slight overhead
+- Tracking running children requires QSet operations
+
+## Signals
+
+```cpp
+signals:
+    void functionsChanged();  // Emitted when function list changes
+```
+
+Use this signal to update UI when the collection is modified.
+
+## Comparison with Other Functions
+
+| Feature | Collection | Chaser | Show |
+|---------|-----------|--------|------|
+| **Timing** | Simultaneous | Sequential | Timeline-based |
+| **Control** | All-or-nothing | Step-by-step | Per-track |
+| **Complexity** | Simple | Medium | Complex |
+| **Use Case** | Grouped presets | Chases/sequences | Full shows |
+
+## See Also
+
+- [Chasers](/functions/chasers) - Sequential function playback
+- [Shows](/functions/shows) - Timeline-based multi-track shows
+- [Scenes](/functions/scenes) - Basic building blocks for collections

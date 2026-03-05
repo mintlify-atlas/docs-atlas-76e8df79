@@ -1,0 +1,306 @@
+---
+title: Contributing to QLC+
+description: Guidelines for contributing code to the QLC+ project
+---
+
+QLC+ welcomes contributions from the community. This guide outlines the requirements and best practices for contributing to the project.
+
+## Before You Start
+
+<Warning>
+QLC+ is a complex C++/Qt software that is cross-platform with a large user base and wide variety of use cases. Changes must be carefully considered and tested.
+</Warning>
+
+### Key Principles
+
+- **Open source doesn't mean unrestricted changes** - Not every change is appropriate for the project
+- **Test on multiple platforms** - Windows is the most used platform
+- **Consider the impact** - Changes in one area can affect others
+- **Keep it simple** - Avoid adding unnecessary options that confuse new users
+- **Take responsibility** - Test thoroughly before submitting
+
+## Requirements
+
+### Technical Skills
+
+<Steps>
+  <Step title="Learn the codebase">
+    Spend time studying the existing code, especially the areas you intend to change. There are hundreds of thousands of lines to learn from.
+  </Step>
+
+  <Step title="Understand C++ and Qt">
+    QLC+ requires solid C++ and Qt knowledge. If you're an amateur developer or expert in other languages, extra study time is needed.
+  </Step>
+
+  <Step title="Master Git">
+    All changes must be submitted via GitHub pull requests. Read documentation on submitting clean pull requests.
+  </Step>
+</Steps>
+
+### Testing Requirements
+
+<Warning>
+Before submitting a pull request, you **must** run the test suite and ensure all tests pass:
+</Warning>
+
+```bash
+make check
+```
+
+If tests fail, fix your code before creating a pull request. See [Testing](/development/testing) for details.
+
+### Platform Testing
+
+- Test on **multiple platforms** if possible
+- **Windows testing is critical** - it's the most used platform
+- Platform-specific areas require extra care:
+  - Audio/video code
+  - Timers
+  - Plugins
+  - UI customizations
+
+## Submission Guidelines
+
+### Pull Requests
+
+<Steps>
+  <Step title="Discuss major changes first">
+    For significant changes, start a thread in the [Development Forum](https://www.qlcplus.org/forum/viewforum.php?f=12) before implementing.
+  </Step>
+
+  <Step title="Create your branch">
+    ```bash
+    git checkout -b feature/my-new-feature
+    ```
+  </Step>
+
+  <Step title="Make your changes">
+    Follow the coding style and test thoroughly.
+  </Step>
+
+  <Step title="Run tests">
+    ```bash
+    make check
+    ```
+  </Step>
+
+  <Step title="Submit pull request">
+    Provide a clear explanation of:
+    - What you changed
+    - Why you changed it
+    - What testing you performed
+  </Step>
+</Steps>
+
+### Explanation Requirements
+
+<Info>
+The more you explain what you did and why, the faster the review will be.
+</Info>
+
+- **Small changes (few lines)** - Quick review likely
+- **Large changes (dozens/hundreds of lines)** - Detailed explanation required
+- **Engine/VCWidget changes** - **Must** be discussed first
+
+## Coding Standards
+
+### Style Guidelines
+
+<CodeGroup>
+```cpp Parenthesis and Spacing
+// Follow the existing style throughout the codebase
+if (condition)
+{
+    doSomething();
+}
+
+// Function calls
+function(arg1, arg2);
+
+// Not like this
+if(condition){
+    doSomething();
+}
+```
+
+```cpp Naming Conventions
+// Follow existing naming patterns in the code
+class MyClass
+{
+private:
+    int m_memberVariable;
+    QString m_name;
+};
+```
+</CodeGroup>
+
+### Code Organization
+
+- Follow the organization of existing files
+- Keep related functionality together
+- Maintain clear separation between engine and UI code
+
+## Documentation
+
+<Warning>
+New features and options **must** be documented in the [online documentation](https://docs.qlcplus.org/v4).
+</Warning>
+
+### Documentation PRs
+
+Submit documentation changes to the [docs repository](https://github.com/mcallegari/qlcplus-docs) via pull request.
+
+If you don't document your changes, someone else has to spend their time doing it.
+
+## Areas Requiring Special Care
+
+### Engine Classes
+
+<Warning>
+Changes to engine classes **must be carefully discussed first** before implementation.
+</Warning>
+
+The engine is the core of QLC+ and affects all functionality. Examples:
+- `Doc` (engine/src/doc.h:54)
+- `Function` (engine/src/function.h:93)
+- `Fixture` (engine/src/fixture.h:71)
+- `MasterTimer`
+
+### VCWidget Class
+
+<Warning>
+VCWidget changes **must be carefully discussed first**.
+</Warning>
+
+The Virtual Console widget base class affects all UI widgets.
+
+### Platform-Specific Code
+
+Extra care needed for:
+- Audio/video rendering
+- Timer implementations
+- Plugin interfaces
+- Hardware I/O
+
+## What Gets Accepted
+
+### Consider Before Adding
+
+<AccordionGroup>
+  <Accordion title="Is this feature really needed?">
+    - Does it solve a real problem?
+    - Will it confuse new users?
+    - Is there a simpler solution?
+  </Accordion>
+
+  <Accordion title="Will it work for everyone?">
+    - Have you tested on multiple platforms?
+    - Does it cause regressions?
+    - Have you checked related areas?
+  </Accordion>
+
+  <Accordion title="Is it consistent with QLC+?">
+    - Does it follow existing patterns?
+    - Is the code style consistent?
+    - Does it fit the project's goals?
+  </Accordion>
+</AccordionGroup>
+
+### Common Rejection Reasons
+
+- **Not tested on Windows** - Most users are on Windows
+- **Tests fail** - Must pass `make check`
+- **Unclear purpose** - Need explanation of what and why
+- **Breaks existing functionality** - Causes regressions
+- **Not discussed first** - Engine/VCWidget changes need discussion
+- **Poorly explained** - Large changes need detailed explanations
+
+## Types of Contributions
+
+### Code Contributions
+
+- Bug fixes
+- New features
+- Performance improvements
+- Refactoring
+- Plugin development
+
+### Non-Code Contributions
+
+- Fixture definitions (.qxf files)
+- RGB scripts
+- Documentation
+- Translation
+- Bug reports
+- Testing
+
+## Getting Help
+
+### Where to Ask
+
+<CardGroup cols={2}>
+  <Card title="Development Forum" icon="comments" href="https://www.qlcplus.org/forum/viewforum.php?f=12">
+    Discuss technical questions and implementation details
+  </Card>
+  
+  <Card title="GitHub Issues" icon="github" href="https://github.com/mcallegari/qlcplus/issues">
+    Report bugs and request features
+  </Card>
+</CardGroup>
+
+### Before Opening an Issue
+
+- Search existing issues
+- Check the [Help Wanted](https://github.com/mcallegari/qlcplus/issues?q=is%3Aopen+is%3Aissue+label%3A%22issue+confirmed%22) tag
+- Provide clear reproduction steps
+- Include platform and version information
+
+## Fixture Definitions
+
+Contributing fixture definitions is one of the easiest ways to help:
+
+- Create new fixture definitions
+- Improve existing definitions
+- Test fixture definitions
+
+See [Fixture Definitions](/development/fixture-definitions) for details.
+
+## Review Process
+
+### Timeline
+
+- **Small PRs** - Usually reviewed within days
+- **Large PRs** - May take weeks, require more discussion
+- **Engine changes** - Require extensive review and testing
+
+### What Reviewers Look For
+
+1. **Code quality** - Style, organization, clarity
+2. **Testing** - All tests pass, adequate coverage
+3. **Platform compatibility** - Works on all supported platforms
+4. **Impact** - No regressions, well-isolated changes
+5. **Documentation** - Code is documented, user docs updated
+
+## Community Standards
+
+### Be Respectful
+
+- Respect maintainer's time and decisions
+- Be patient during review
+- Accept feedback constructively
+- Help other contributors
+
+### Take Responsibility
+
+- Test thoroughly before submitting
+- Fix issues found during review
+- Monitor your PR after merge
+- Help users affected by your changes
+
+## Resources
+
+- [Building QLC+](/development/building)
+- [Architecture Overview](/development/architecture)
+- [Testing Guide](/development/testing)
+- [GitHub Wiki](https://github.com/mcallegari/qlcplus/wiki)
+- [Development Forum](https://www.qlcplus.org/forum/viewforum.php?f=12)

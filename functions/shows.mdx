@@ -1,0 +1,447 @@
+---
+title: "Shows"
+description: "Timeline-based multi-track shows with precise timing control"
+---
+
+## Overview
+
+A Show is the most advanced function type in QLC+. It provides a timeline-based approach where multiple functions can be placed on separate tracks with precise start times and durations. Shows are perfect for pre-programmed performances, theatrical productions, and synchronized displays.
+
+<Note>
+Shows replace the need for complex chaser hierarchies by providing a visual timeline where you can see and control when each function plays.
+</Note>
+
+## When to Use Shows
+
+<CardGroup cols={2}>
+  <Card title="Theatrical Productions" icon="theater-masks">
+    Program complete lighting cues with precise timing
+  </Card>
+  <Card title="Music Synchronization" icon="music">
+    Sync lighting to pre-recorded music tracks
+  </Card>
+  <Card title="Automated Displays" icon="calendar-days">
+    Create self-running light shows for permanent installations
+  </Card>
+  <Card title="Complex Sequences" icon="diagram-project">
+    Build multi-layer effects with overlapping functions
+  </Card>
+</CardGroup>
+
+## Show Structure
+
+Shows are organized into tracks:
+
+```
+Show
+├── Track 1: Stage Wash
+│   ├── Function at 0ms (5000ms duration)
+│   ├── Function at 6000ms (3000ms duration)
+│   └── Function at 10000ms (2000ms duration)
+├── Track 2: Moving Heads
+│   ├── Function at 2000ms (8000ms duration)
+│   └── Function at 11000ms (4000ms duration)
+└── Track 3: Effects
+    └── Function at 5000ms (10000ms duration)
+```
+
+## Time Division Modes
+
+Shows support different timing systems:
+
+```cpp
+enum TimeDivision {
+    Time,       // Millisecond-based timing
+    BPM_4_4,    // 4/4 time signature
+    BPM_3_4,    // 3/4 time signature
+    BPM_2_4,    // 2/4 time signature
+    Invalid
+};
+```
+
+### Time-Based Shows
+
+<ParamField path="timeDivisionType" type="Time">
+  Functions placed at specific millisecond timestamps
+</ParamField>
+
+Best for:
+- Pre-programmed sequences
+- Syncing to recorded audio
+- Fixed-duration shows
+
+### Beat-Based Shows
+
+<ParamField path="timeDivisionType" type="BPM_4_4 | BPM_3_4 | BPM_2_4">
+  Functions placed at beat positions
+</ParamField>
+
+<ParamField path="timeDivisionBPM" type="int" default="120">
+  Beats per minute for beat-based timing
+</ParamField>
+
+Best for:
+- Music-synced shows
+- Live performance with tempo changes
+- Rhythmic lighting patterns
+
+## Class Structure
+
+The Show class (show.h:37) provides:
+
+### Time Division Control
+
+```cpp
+// Set time division mode and BPM
+void setTimeDivision(TimeDivision type, int BPM);
+
+// Get time division settings
+TimeDivision timeDivisionType();
+int timeDivisionBPM();
+int beatsDivision();  // Returns 2, 3, or 4
+
+// Convert between string and enum
+static QString tempoToString(TimeDivision type);
+static TimeDivision stringToTempo(QString tempo);
+```
+
+### Track Management
+
+```cpp
+// Add a track
+bool addTrack(Track *track, quint32 id = Track::invalidId());
+
+// Remove a track
+bool removeTrack(quint32 id);
+
+// Get track by ID
+Track *track(quint32 id) const;
+
+// Get all tracks
+QList<Track*> tracks() const;
+
+// Get track count
+int getTracksCount();
+
+// Reorder tracks
+void moveTrack(Track *track, int direction);
+```
+
+### Show Function Access
+
+```cpp
+// Get unique ShowFunction ID for creation
+quint32 getLatestShowFunctionId();
+
+// Get ShowFunction by ID
+ShowFunction *showFunction(quint32 id);
+
+// Get track containing a ShowFunction
+Track *getTrackFromShowFunctionID(quint32 id);
+
+// Get track bound to a scene
+Track *getTrackFromSceneID(quint32 id);
+```
+
+## Track System
+
+Each track in a show has:
+
+```cpp
+class Track {
+public:
+    quint32 m_id;              // Track ID
+    QString m_name;            // Track name
+    quint32 m_sceneID;         // Optional bound scene
+    QList<ShowFunction*> m_showFunctions;  // Functions on track
+};
+```
+
+### Track Types
+
+<Steps>
+  <Step title="Standard Track">
+    Can contain any function type (scenes, chasers, EFX, etc.)
+  </Step>
+  <Step title="Sequence Track">
+    Bound to a scene, contains sequence data
+  </Step>
+  <Step title="Audio Track">
+    Contains audio playback function
+  </Step>
+</Steps>
+
+## ShowFunction Structure
+
+Functions placed on the timeline:
+
+```cpp
+class ShowFunction {
+public:
+    quint32 m_id;              // Unique ShowFunction ID
+    quint32 m_functionID;      // Actual function to play
+    quint32 m_startTime;       // Start time (ms or beats)
+    quint32 m_duration;        // Duration override
+    QColor m_color;            // Display color in UI
+    bool m_locked;             // Prevent editing
+};
+```
+
+### Timing Control
+
+<ParamField path="startTime" type="quint32">
+  When the function starts (milliseconds from show start, or beat number)
+</ParamField>
+
+<ParamField path="duration" type="quint32">
+  Override function duration. If 0, uses function's own duration.
+</ParamField>
+
+<ParamField path="locked" type="bool">
+  If true, prevents moving or editing the ShowFunction in the UI
+</ParamField>
+
+## Duration Calculation
+
+```cpp
+quint32 totalDuration() {
+    quint32 totalDuration = 0;
+    
+    foreach (Track *track, m_tracks) {
+        foreach (ShowFunction *sf, track->showFunctions()) {
+            quint32 endTime = sf->startTime() + sf->duration();
+            if (endTime > totalDuration)
+                totalDuration = endTime;
+        }
+    }
+    
+    return totalDuration;
+}
+```
+
+The show's total duration is determined by the latest-ending ShowFunction across all tracks.
+
+## Intensity Control
+
+Shows provide per-track intensity control:
+
+```cpp
+int adjustAttribute(qreal fraction, int attributeId) {
+    // Each track has its own attribute index
+    QList<Track*> trackList = m_tracks.values();
+    if (attributeId < trackList.count()) {
+        Track *track = trackList.at(attributeId);
+        m_runner->adjustIntensity(fraction, track);
+    }
+    return attributeId;
+}
+```
+
+<Note>
+Unlike other functions, Show attributes map to tracks, not generic properties. Attribute 0 controls track 0's intensity, attribute 1 controls track 1, etc.
+</Note>
+
+## ShowRunner
+
+Shows use a dedicated runner for playback:
+
+```cpp
+class ShowRunner {
+public:
+    // Start functions at the right time
+    void write(MasterTimer *timer);
+    
+    // Adjust track intensity
+    void adjustIntensity(qreal fraction, Track *track);
+    
+    // Pause control
+    void setPause(bool enable);
+};
+```
+
+The runner:
+- Monitors elapsed time
+- Starts functions when their start time arrives
+- Stops functions when their duration expires
+- Handles pause/resume
+- Manages track intensity
+
+## XML Structure
+
+```xml
+<Function Type="Show" ID="100" Name="Main Show">
+  <TimeDivision Type="Time" BPM="120"/>
+  
+  <Track ID="0" Name="Stage Wash" SceneID="0">
+    <ShowFunction ID="0" 
+                  Function="1" 
+                  StartTime="0" 
+                  Duration="5000" 
+                  Color="#ff0000"
+                  Locked="0"/>
+    <ShowFunction ID="1" 
+                  Function="2" 
+                  StartTime="6000" 
+                  Duration="3000"/>
+  </Track>
+  
+  <Track ID="1" Name="Moving Heads">
+    <ShowFunction ID="2" 
+                  Function="10" 
+                  StartTime="2000" 
+                  Duration="8000"/>
+  </Track>
+</Function>
+```
+
+## Playback Control
+
+### Starting the Show
+
+```cpp
+void preRun(MasterTimer* timer) {
+    // Create and start the runner
+    m_runner = new ShowRunner(doc(), id(), elapsed());
+    
+    // Set initial track intensities
+    for (int i = 0; i < m_tracks.count(); i++) {
+        m_runner->adjustIntensity(
+            getAttributeValue(i), 
+            m_tracks[i]
+        );
+    }
+    
+    m_runner->start();
+}
+```
+
+### Running the Show
+
+```cpp
+void write(MasterTimer* timer, QList<Universe*> universes) {
+    if (isPaused())
+        return;
+        
+    // Let the runner handle function timing
+    m_runner->write(timer);
+}
+```
+
+### Stopping the Show
+
+```cpp
+void postRun(MasterTimer* timer, QList<Universe*> universes) {
+    if (m_runner != NULL) {
+        m_runner->stop();
+        delete m_runner;
+        m_runner = NULL;
+    }
+}
+```
+
+## Signals
+
+```cpp
+signals:
+    void timeChanged(quint32);  // Current playback time
+    void showFinished();        // Show reached the end
+```
+
+Use these signals to:
+- Update timeline cursor in UI
+- Trigger actions when show completes
+- Monitor playback progress
+
+## Best Practices
+
+<Steps>
+  <Step title="Plan Track Organization">
+    Group related functions on the same track for easier management
+  </Step>
+  <Step title="Use Appropriate Time Division">
+    Choose Time for fixed sequences, BPM for music-synced shows
+  </Step>
+  <Step title="Test Overlapping Functions">
+    Verify that overlapping functions on different tracks interact correctly
+  </Step>
+  <Step title="Lock Critical Functions">
+    Lock ShowFunctions that must not be accidentally moved
+  </Step>
+  <Step title="Color-Code Tracks">
+    Use different colors to visually distinguish function types
+  </Step>
+</Steps>
+
+## Advanced Features
+
+### Track Scene Binding
+
+Tracks can be bound to a scene:
+
+```cpp
+Track *track = new Track(sceneID, show);
+```
+
+This is used for:
+- Sequence tracks (animate scene channels)
+- Fixture group organization
+- Consistent channel control
+
+### Copying Shows
+
+Show copying duplicates all tracks and ShowFunctions:
+
+```cpp
+bool copyFrom(const Function* function) {
+    const Show* show = qobject_cast<const Show*>(function);
+    
+    // Copy tracks
+    foreach (Track *track, show->tracks()) {
+        Track *newTrack = new Track(track->sceneID(), this);
+        addTrack(newTrack);
+        
+        // Copy ShowFunctions
+        foreach (ShowFunction *sf, track->showFunctions()) {
+            Function *copy = sf->function()->createCopy(doc());
+            ShowFunction *newSF = newTrack->createShowFunction(copy->id());
+            newSF->setStartTime(sf->startTime());
+            newSF->setDuration(sf->duration());
+        }
+    }
+}
+```
+
+## Performance Considerations
+
+- Shows have minimal runtime overhead
+- ShowRunner only checks elapsed time each tick
+- Memory usage scales with number of ShowFunctions
+- Track intensity adjustments are lightweight
+
+<Warning>
+Shows with hundreds of overlapping functions may cause CPU spikes when many functions start simultaneously. Consider staggering start times by a few milliseconds.
+</Warning>
+
+## Limitations
+
+1. **No Live Editing**: Cannot add/remove ShowFunctions while show is running
+2. **Fixed Timeline**: Cannot dynamically change durations during playback
+3. **Track Intensity Only**: Cannot adjust individual ShowFunction intensity
+4. **No Nested Shows**: Shows cannot contain other shows
+
+## Comparison with Chasers
+
+| Feature | Show | Chaser |
+|---------|------|--------|
+| **Timing** | Absolute timeline | Relative steps |
+| **Tracks** | Multiple parallel | Single sequence |
+| **Flexibility** | Fixed timeline | Dynamic playback |
+| **Complexity** | High | Medium |
+| **Use Case** | Complete shows | Simple sequences |
+
+## See Also
+
+- [Chasers](/functions/chasers) - Sequential function playback
+- [Sequences](/functions/sequences) - Animated scene values
+- [Collections](/functions/collections) - Simultaneous function groups
+- [Audio](/functions/audio) - Audio playback in shows

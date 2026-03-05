@@ -1,0 +1,285 @@
+---
+title: "Chasers"
+description: "Sequential playback of functions with customizable timing and transitions"
+---
+
+## Overview
+
+A Chaser is a meta-function that plays other functions in sequential order. Chasers contain information about the running order, direction, and timing applied to member functions. The chaser itself is nothing without other functions (typically scenes) as its members.
+
+<Note>
+If a member function's behavior is changed, those changes automatically apply to all chasers containing that function.
+</Note>
+
+## When to Use Chasers
+
+<CardGroup cols={2}>
+  <Card title="Sequential Effects" icon="forward">
+    Create chasing lights, color changes, or movement sequences
+  </Card>
+  <Card title="Multi-Step Shows" icon="list">
+    Build complex shows from individual lighting states
+  </Card>
+  <Card title="Automated Sequences" icon="robot">
+    Create self-running lighting programs with loops
+  </Card>
+  <Card title="Synchronized Playback" icon="clock">
+    Time multiple functions to music or beat
+  </Card>
+</CardGroup>
+
+## Creating a Chaser
+
+Chasers are defined by their steps, each containing:
+
+```cpp
+struct ChaserStep {
+    quint32 fid;         // Function ID to play
+    uint fadeIn;         // Fade in time (ms)
+    uint hold;           // Hold time (ms)
+    uint fadeOut;        // Fade out time (ms)
+    uint duration;       // Total duration (ms)
+    QString note;        // User note
+};
+```
+
+## Key Properties
+
+### Step Management
+
+<ParamField path="steps" type="QList<ChaserStep>">
+  Ordered list of functions to play sequentially
+</ParamField>
+
+### Playback Direction
+
+- **Forward**: Play steps from first to last
+- **Backward**: Play steps from last to first
+
+### Run Order
+
+- **Loop**: Continuously repeat the sequence
+- **SingleShot**: Play once and stop
+- **PingPong**: Alternate between forward and backward
+
+## Speed Modes
+
+Chasers offer three speed mode options for fine-grained timing control:
+
+### Speed Mode Types
+
+```cpp
+enum SpeedMode {
+    Default,   // Use each step function's own speed
+    Common,    // Apply chaser speed to all steps
+    PerStep    // Individual speed per step
+};
+```
+
+<Steps>
+  <Step title="Default Mode">
+    Each step uses its own function's fade in/out/duration settings
+  </Step>
+  <Step title="Common Mode">
+    The chaser's speed settings override all steps uniformly
+  </Step>
+  <Step title="Per-Step Mode">
+    Each step has individual fade in, hold, and fade out times
+  </Step>
+</Steps>
+
+## Class Methods
+
+The Chaser class (chaser.h:53) provides these essential methods:
+
+### Step Management
+
+```cpp
+// Add a step at specified index (-1 = append)
+bool addStep(const ChaserStep& step, int index = -1);
+
+// Remove step at index
+bool removeStep(int index);
+
+// Replace step at index
+bool replaceStep(const ChaserStep& step, int index);
+
+// Move step from source to destination
+bool moveStep(int sourceIdx, int destIdx);
+
+// Get step at index
+ChaserStep *stepAt(int idx);
+
+// Get all steps
+QList<ChaserStep> steps() const;
+
+// Get step count
+int stepsCount() const;
+```
+
+### Speed Mode Control
+
+```cpp
+// Set fade in mode
+void setFadeInMode(SpeedMode mode);
+SpeedMode fadeInMode() const;
+
+// Set fade out mode
+void setFadeOutMode(SpeedMode mode);
+SpeedMode fadeOutMode() const;
+
+// Set duration/hold mode
+void setDurationMode(SpeedMode mode);
+SpeedMode durationMode() const;
+```
+
+### Playback Control
+
+```cpp
+// Tap to sync to beat
+void tap();
+
+// Get current step index
+int currentStepIndex() const;
+
+// Compute next step
+int computeNextStep(int currentStepIndex) const;
+
+// Get number of running steps
+int runningStepsNumber() const;
+```
+
+### Duration Management
+
+```cpp
+// Set total duration (distributes across steps)
+void setTotalDuration(quint32 msec);
+
+// Get total duration of all steps
+quint32 totalDuration();
+```
+
+## Fade Control Modes
+
+Control how steps transition into each other:
+
+```cpp
+enum FadeControlMode {
+    FromFunction,         // Use function's fade settings
+    Blended,             // Smooth blend between steps
+    Crossfade,           // Crossfade transition
+    BlendedCrossfade     // Combined blended crossfade
+};
+```
+
+## Intensity Control
+
+Adjust intensity for the entire chaser or individual steps:
+
+```cpp
+// Adjust chaser intensity
+int adjustAttribute(qreal fraction, int attributeId);
+
+// Adjust specific step intensity
+void adjustStepIntensity(qreal fraction, 
+                         int stepIndex = -1,
+                         FadeControlMode fadeControl = FromFunction);
+```
+
+## Tempo Types
+
+Chasers can sync to time or beats:
+
+<CardGroup cols={2}>
+  <Card title="Time Mode" icon="clock">
+    Steps advance based on millisecond timing
+  </Card>
+  <Card title="Beats Mode" icon="music">
+    Steps advance based on beat count from BPM
+  </Card>
+</CardGroup>
+
+## XML Structure
+
+```xml
+<Function Type="Chaser" ID="1" Name="Chaser 1">
+  <Speed FadeIn="0" FadeOut="0" Duration="1000"/>
+  <Direction>Forward</Direction>
+  <RunOrder>Loop</RunOrder>
+  <SpeedModes FadeIn="Common" FadeOut="Common" Duration="Common"/>
+  <Step Number="0" FadeIn="0" Hold="1000" FadeOut="0">
+    <Function>0</Function>
+  </Step>
+  <Step Number="1" FadeIn="0" Hold="1000" FadeOut="0">
+    <Function>2</Function>
+  </Step>
+</Function>
+```
+
+## Advanced Features
+
+### Action System
+
+Chasers support runtime actions:
+
+```cpp
+struct ChaserAction {
+    ActionType m_action;            // Action to perform
+    int m_stepIndex;                // Target step
+    qreal m_masterIntensity;        // Master intensity
+    qreal m_stepIntensity;          // Step intensity
+    FadeControlMode m_fadeMode;     // Fade control
+};
+
+// Set an action to perform
+void setAction(ChaserAction &action);
+```
+
+Available actions:
+- Step forward/backward
+- Jump to specific step
+- Adjust intensity
+- Change fade mode
+
+### Running State
+
+Chasers use a `ChaserRunner` class (chaser.cpp:618) to manage playback:
+
+```cpp
+private:
+    ChaserRunner* m_runner;  // Runtime playback engine
+    QMutex m_runnerMutex;    // Thread-safe access
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Choose Appropriate Speed Mode">
+    Use Common mode for uniform timing, PerStep for varied rhythms
+  </Step>
+  <Step title="Set Realistic Hold Times">
+    Ensure hold times allow functions to complete their effects
+  </Step>
+  <Step title="Prevent Self-Containment">
+    A chaser cannot contain itself directly or indirectly
+  </Step>
+  <Step title="Use Crossfade for Smooth Transitions">
+    Enable crossfade mode for seamless transitions between steps
+  </Step>
+</Steps>
+
+<Warning>
+When using Beat tempo mode, ensure the chaser duration (in beats) is compatible with your step count and BPM settings. Mismatched values can cause unexpected timing.
+</Warning>
+
+## Performance Considerations
+
+- Chasers with many steps use more CPU during runtime
+- Crossfade mode requires additional processing for blending
+- The `m_runnerMutex` ensures thread-safe operation but adds overhead
+
+## See Also
+
+- [Scenes](/functions/scenes) - Basic chaser steps
+- [Sequences](/functions/sequences) - Special chaser variant
+- [Shows](/functions/shows) - Timeline-based shows with multiple tracks

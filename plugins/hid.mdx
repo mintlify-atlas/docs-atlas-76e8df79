@@ -1,0 +1,495 @@
+---
+title: HID Plugin
+description: Human Interface Device support for joysticks, gamepads, and USB controllers
+---
+
+## Overview
+
+The HID (Human Interface Device) plugin enables QLC+ to receive input from USB HID-class devices such as joysticks, gamepads, keyboards, and other USB input devices. This provides an affordable way to control lighting using gaming peripherals and generic USB controllers.
+
+<Note>
+The plugin name as reported by QLC+ is **"HID"**
+</Note>
+
+## Capabilities
+
+The HID plugin supports:
+
+- **Input** - Receive data from HID devices
+- **Output** - Send data to HID devices (limited device support)
+
+## Supported Device Types
+
+The HID plugin works with standard USB HID-class devices:
+
+<CardGroup cols={2}>
+  <Card title="Joysticks" icon="plane">
+    Flight sticks, game controllers with analog axes
+  </Card>
+  <Card title="Gamepads" icon="gamepad">
+    PlayStation, Xbox, generic USB gamepads
+  </Card>
+  <Card title="Keyboards" icon="keyboard">
+    Standard USB keyboards (requires HID mode)
+  </Card>
+  <Card title="Custom Controllers" icon="usb">
+    Arduino-based HID devices, custom USB controllers
+  </Card>
+</CardGroup>
+
+<Warning>
+The HID plugin is for **generic HID devices**. MIDI controllers should use the [MIDI plugin](/plugins/midi) instead, even if they connect via USB.
+</Warning>
+
+## Platform Support
+
+The HID plugin has platform-specific implementations:
+
+- **Linux** - Uses `/dev/input` and evdev interface
+- **macOS** - Uses IOKit HID Manager
+- **Windows** - Uses Windows HID API
+
+## Device Detection
+
+Devices are automatically detected when:
+- QLC+ starts and calls `init()`
+- The user manually rescans via configuration
+- USB hotplug events occur (device connected/disconnected)
+
+```cpp
+void rescanDevices();  // Manually trigger device scan
+```
+
+### Hotplug Support
+
+Automatic detection of device connections:
+
+```cpp
+public slots:
+    void slotDeviceAdded(uint vid, uint pid);    // Device connected
+    void slotDeviceRemoved(uint vid, uint pid);  // Device disconnected
+```
+
+<Note>
+When a device is connected or disconnected, the plugin emits `configurationChanged()` to notify QLC+.
+</Note>
+
+## Input Configuration
+
+### Opening Input
+
+```cpp
+bool openInput(quint32 input, quint32 universe);
+```
+
+When opening an input:
+1. Plugin locates the HID device by index
+2. Opens the device for reading
+3. Starts polling thread for input events
+
+### HID Input Events
+
+HID devices report various input types:
+
+<Tabs>
+  <Tab title="Buttons">
+    ### Button Input
+    
+    Digital on/off inputs (0 or 255):
+    
+    **Examples:**
+    - Gamepad face buttons (A, B, X, Y)
+    - Trigger buttons
+    - Keyboard keys
+    - Joystick buttons
+    
+    **Channel mapping:**
+    - Button 1 → Channel 1
+    - Button 2 → Channel 2
+    - etc.
+  </Tab>
+  <Tab title="Axes">
+    ### Axis Input
+    
+    Analog inputs (0-255 range):
+    
+    **Examples:**
+    - Joystick X/Y axes
+    - Gamepad analog sticks
+    - Throttle controls
+    - Rudder pedals
+    
+    **Channel mapping:**
+    - Axis 1 → Channel (button_count + 1)
+    - Axis 2 → Channel (button_count + 2)
+    - etc.
+    
+    **Value scaling:**
+    ```
+    HID Raw: -32768 to +32767 (16-bit)
+    QLC+ Channel: 0 to 255 (8-bit)
+    ```
+  </Tab>
+  <Tab title="POV/Hat">
+    ### POV Hat / D-Pad
+    
+    Directional inputs (often 8-way):
+    
+    **Positions:**
+    - Up, Down, Left, Right
+    - Diagonal combinations
+    - Centered (neutral)
+    
+    **Channel mapping:**
+    Maps to discrete channels based on direction
+  </Tab>
+</Tabs>
+
+### Channel Mapping
+
+HID devices map to QLC+ channels in order:
+
+```
+Channel Layout:
+  1 to N:     Buttons (N = number of buttons)
+  N+1 to N+M: Axes (M = number of axes)  
+  N+M+1...:   POV/Hat switches
+```
+
+**Example (Xbox controller):**
+```
+Channels 1-14:  Buttons (A, B, X, Y, LB, RB, etc.)
+Channels 15-18: Left stick X/Y, Right stick X/Y
+Channels 19-20: Left/Right triggers
+Channel 21:     D-Pad
+```
+
+## Output Configuration
+
+### Opening Output
+
+```cpp
+bool openOutput(quint32 output, quint32 universe);
+```
+
+<Warning>
+Output support is **very limited** and depends on the device. Most HID input devices do not support output.
+</Warning>
+
+### Devices with Output
+
+Some devices support output:
+- **Force feedback joysticks** - Vibration/rumble effects
+- **RGB keyboards/mice** - LED control
+- **Custom USB devices** - Device-specific outputs
+
+### Writing Data
+
+```cpp
+void writeUniverse(quint32 universe, quint32 output,
+                   const QByteArray& data, bool dataChanged);
+```
+
+## Device Polling
+
+The HID plugin uses a polling thread to read device state:
+
+```cpp
+class HIDPoller : public QThread
+{
+    // Continuously polls HID devices for changes
+    // Emits valueChanged() when inputs change
+};
+```
+
+**Polling rate:** Typically 20-50Hz depending on device and system
+
+<Note>
+Unlike interrupts, polling introduces small latency (20-50ms). This is acceptable for lighting control but may not be suitable for real-time gaming.
+</Note>
+
+## Configuration
+
+The HID plugin supports configuration through the QLC+ interface:
+
+```cpp
+void configure();
+bool canConfigure() const;  // Returns true
+```
+
+Configuration dialog allows:
+- Viewing detected devices
+- Rescanning for new devices
+- Testing device inputs
+- Viewing channel mappings
+
+## Device Management
+
+### Device List
+
+```cpp
+QList<HIDDevice*> m_devices;  // List of all detected HID devices
+```
+
+### Getting Devices
+
+```cpp
+HIDDevice* device(const QString& path) const;  // By device path
+HIDDevice* device(quint32 index) const;        // By index
+HIDDevice* deviceOutput(quint32 index) const;  // Output device by index
+```
+
+### Adding/Removing Devices
+
+```cpp
+void addDevice(HIDDevice* device);
+void removeDevice(HIDDevice* device);
+
+signals:
+    void deviceAdded(HIDDevice* device);
+    void deviceRemoved(HIDDevice* device);
+```
+
+## Platform-Specific Details
+
+### Linux
+
+**Device location:** `/dev/input/event*`
+
+**Permissions:**
+```bash
+# Add user to input group
+sudo usermod -a -G input $USER
+
+# Or create udev rule for specific devices
+sudo nano /etc/udev/rules.d/99-hid.rules
+```
+
+**Example udev rule:**
+```
+SUBSYSTEM=="input", GROUP="input", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="045e", ATTRS{idProduct}=="028e", MODE="0666"
+```
+
+**Testing devices:**
+```bash
+# List input devices
+ls -l /dev/input/
+
+# Monitor device events
+sudo evtest /dev/input/event10
+
+# View device capabilities  
+sudo evtest --info /dev/input/event10
+```
+
+### macOS
+
+**Framework:** IOKit HID Manager
+
+**Device access:** Automatic (no special permissions)
+
+**Testing:**
+- Use USB Prober (Xcode tools)
+- System Information → USB
+
+### Windows
+
+**API:** Windows HID API (hid.dll)
+
+**Device access:** Automatic for HID devices
+
+**Testing:**
+- Device Manager → Human Interface Devices
+- Joy.cpl (Game Controllers control panel)
+- Use tools like HIDView or USB Device Tree Viewer
+
+## Common Controllers
+
+### Xbox 360/One Controllers
+
+**VID:PID:** 045e:028e (360), 045e:02dd (One)
+
+**Inputs:**
+- 14 buttons
+- 2 analog sticks (4 axes)  
+- 2 analog triggers (2 axes)
+- 1 D-pad
+
+**Notes:** Works as HID on most platforms
+
+### PlayStation DualShock 3/4
+
+**VID:PID:** 054c:0268 (DS3), 054c:05c4 (DS4)
+
+**Inputs:**
+- 17 buttons
+- 2 analog sticks (4 axes)
+- Pressure-sensitive face buttons (DS3)
+- Touchpad (DS4)
+
+**Notes:** May require additional drivers on Windows
+
+### Logitech Extreme 3D Pro
+
+**VID:PID:** 046d:c215
+
+**Inputs:**
+- 12 buttons
+- 3 axes (X, Y, twist)
+- 1 POV hat
+- 1 throttle slider
+
+**Notes:** Popular affordable joystick for lighting control
+
+### Generic USB Gamepads
+
+Most generic USB gamepads work as HID:
+- 8-12 buttons
+- 2 analog sticks
+- D-pad
+
+## Best Practices
+
+### Button Debouncing
+
+QLC+ handles debouncing, but for critical triggers:
+- Use virtual channels with short fade times
+- Implement hysteresis in scenes
+- Use edge triggers instead of level triggers
+
+### Axis Calibration
+
+<Steps>
+  <Step title="Test full range">
+    Move axes through full travel to verify 0-255 range
+  </Step>
+  <Step title="Check center position">
+    Verify resting position is ~127 (50%)
+  </Step>
+  <Step title="Apply deadzone if needed">
+    Use QLC+ channel modifiers to create deadzone near center
+  </Step>
+  <Step title="Smooth axis movement">
+    Apply LTP (Latest Takes Precedence) mode for smooth control
+  </Step>
+</Steps>
+
+### Device Selection
+
+**Good choices for lighting:**
+- Controllers with many buttons
+- Devices with robust construction
+- Controllers with good analog sticks
+- Affordable, readily available devices
+
+**Avoid:**
+- Wireless controllers (latency, battery issues)
+- Devices requiring special drivers
+- Overly complex multi-mode devices
+
+## Troubleshooting
+
+### Device Not Detected
+
+<AccordionGroup>
+  <Accordion title="Check USB connection">
+    Verify device is properly connected and powered
+  </Accordion>
+  <Accordion title="Verify HID mode">
+    Some devices have multiple modes - ensure HID mode is active
+  </Accordion>
+  <Accordion title="Check permissions (Linux)">
+    User must be in `input` group: `sudo usermod -a -G input $USER`
+  </Accordion>
+  <Accordion title="Try different USB port">
+    Some USB hubs may not properly enumerate HID devices
+  </Accordion>
+  <Accordion title="Rescan devices">
+    Use configuration dialog to manually rescan
+  </Accordion>
+</AccordionGroup>
+
+### No Input Received
+
+1. Verify input is opened in QLC+
+2. Test device with OS tools (evtest, Joy.cpl, etc.)
+3. Check channel mapping in input profile
+4. Ensure device is not in sleep/power-save mode
+5. Try reconnecting the device
+
+### Erratic Input Values
+
+1. Check for USB interference or power issues
+2. Verify device drivers are up to date
+3. Test with different USB port
+4. Check for damaged cable or connector
+5. Apply deadzone to axes if drifting
+
+### Linux Permission Issues
+
+```bash
+# Check current permissions
+ls -l /dev/input/event*
+
+# Temporarily test with sudo (not for production)
+sudo qlcplus
+
+# Proper fix: add user to input group
+sudo usermod -a -G input $USER
+# Then logout and login
+
+# Or use udev rules (see Platform-Specific Details above)
+```
+
+## Creating Custom HID Controllers
+
+You can create custom controllers using:
+
+### Arduino Leonardo/Micro
+
+Arduino boards with native USB support:
+
+```cpp
+#include <Keyboard.h>
+#include <Mouse.h>
+// Or use Joystick library for gamepad emulation
+
+void setup() {
+  Keyboard.begin();
+}
+
+void loop() {
+  if (digitalRead(2) == HIGH) {
+    Keyboard.press('a');
+  }
+}
+```
+
+### Teensy
+
+Powerful microcontroller with excellent HID support:
+- Multiple HID types (keyboard, mouse, joystick)
+- High update rates
+- Large number of inputs
+
+### STM32
+
+Advanced ARM microcontrollers with USB HID:
+- Very fast
+- Many GPIO pins
+- Requires more programming knowledge
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="MIDI Plugin" icon="music" href="/plugins/midi">
+    MIDI controller support
+  </Card>
+  <Card title="OSC Plugin" icon="wave-square" href="/plugins/osc">
+    Network-based control protocol
+  </Card>
+  <Card title="Plugin Overview" icon="plug" href="/plugins/overview">
+    Learn about the plugin architecture
+  </Card>
+</CardGroup>

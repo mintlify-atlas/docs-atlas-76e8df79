@@ -1,0 +1,533 @@
+---
+title: ENTTEC Devices
+description: ENTTEC DMX USB Pro, Pro Mk2, and Open DMX USB support
+---
+
+## Overview
+
+ENTTEC is a leading manufacturer of USB-to-DMX interfaces. QLC+ provides comprehensive support for ENTTEC devices through the DMX USB plugin, including professional features like RDM (Remote Device Management) and multi-port configurations.
+
+<Note>
+ENTTEC devices are supported through the [DMX USB plugin](/plugins/dmx-usb). This page covers ENTTEC-specific features and configuration.
+</Note>
+
+## Supported Devices
+
+### ENTTEC DMX USB Pro
+
+<Card title="DMX USB Pro" icon="microchip">
+  Professional single-universe USB-to-DMX interface
+  
+  **Features:**
+  - 1 DMX output (512 channels)
+  - 1 DMX input (512 channels)  
+  - RDM support
+  - Galvanic isolation
+  - 5-pin XLR connectors
+  
+  **Type:** `ProRXTX`
+</Card>
+
+**Technical specifications:**
+- **Chipset:** FTDI FT245RL
+- **DMX Refresh Rate:** Up to 44Hz (per DMX spec)
+- **Connector:** USB Type-B
+- **Power:** USB bus-powered (500mA max)
+
+### ENTTEC DMX USB Pro Mk2
+
+<Card title="DMX USB Pro Mk2" icon="microchip">
+  Advanced multi-port interface with MIDI support
+  
+  **Features:**
+  - 2 DMX outputs (1024 channels total)
+  - 1 DMX input (512 channels)
+  - 1 MIDI output
+  - 1 MIDI input
+  - RDM support on both outputs
+  - Individual port control
+  
+  **Type:** `ProMk2`
+</Card>
+
+**Port configuration:**
+```cpp
+Port 1: DMX Output (512 channels)
+Port 2: DMX Output (512 channels)
+Port 3: DMX Input (512 channels)
+Port 4: MIDI Output
+Port 5: MIDI Input
+```
+
+**Technical specifications:**
+- **Chipset:** FTDI FT232RL
+- **DMX Refresh Rate:** Up to 44Hz per port
+- **Connector:** USB Type-B
+- **Power:** USB bus-powered (500mA max)
+
+### ENTTEC Open DMX USB
+
+<Card title="Open DMX USB" icon="microchip">
+  Entry-level output-only interface
+  
+  **Features:**
+  - 1 DMX output (512 channels)
+  - Output only (no input)
+  - No RDM support
+  - 3-pin XLR connector
+  
+  **Type:** `OpenTX`
+</Card>
+
+**Technical specifications:**
+- **Chipset:** FTDI FT232RL
+- **DMX Refresh Rate:** Up to 40Hz
+- **Connector:** USB Type-B
+- **Power:** USB bus-powered (500mA max)
+
+<Warning>
+The Open DMX USB requires continuous DMX transmission. The plugin handles this automatically using a background thread.
+</Warning>
+
+## Device Detection
+
+ENTTEC devices are automatically detected by the DMX USB plugin:
+
+### Identification Process
+
+1. **USB Enumeration** - Plugin scans for FTDI devices
+2. **Device Query** - Sends label 77 (Get Widget Parameters)
+3. **Type Detection** - Determines device type from response:
+   - DMX USB Pro: Responds with parameters, has RDM flag
+   - DMX USB Pro Mk2: Multiple ports, MIDI capability
+   - Open DMX USB: No response or minimal response
+
+### Device Serial Numbers
+
+ENTTEC Pro devices have unique serial numbers:
+
+```cpp
+static bool extractSerial();  // Read device serial number
+QString m_proSerial;          // Stored serial number
+```
+
+Serial format: `ENxxxxxxxx` (e.g., `EN123456`)
+
+<Note>
+The serial number is displayed in the device name and used for identification when multiple ENTTEC devices are connected.
+</Note>
+
+## DMX USB Pro Features
+
+### Opening Lines
+
+```cpp
+bool open(quint32 line, bool input = false);
+```
+
+The Pro supports both input and output:
+- `line = 0, input = false` - Open DMX output
+- `line = 0, input = true` - Open DMX input
+
+### Configuration
+
+The Pro can be configured with label 4 (Set Widget Parameters):
+
+```cpp
+bool configureLine(ushort dmxLine, bool isMidi);
+```
+
+**Parameters:**
+- DMX break time
+- DMX Mark After Break time  
+- DMX output rate
+
+### Writing DMX Data
+
+```cpp
+bool writeUniverse(quint32 universe, quint32 output,
+                   const QByteArray& data, bool dataChanged);
+```
+
+Data is sent using label 6 (Send DMX Packet):
+
+```
+Format:
+  0x7E                    // Start delimiter
+  0x06                    // Label (Send DMX)
+  [Length LSB] [Length MSB]  // Data length
+  [DMX Data...]          // 0-512 bytes
+  0xE7                    // End delimiter
+```
+
+### Receiving DMX Data
+
+Input data arrives via label 5 (Receive DMX Packet):
+
+```cpp
+int readData(QByteArray &payload, bool &isMIDI, int RDM = None);
+```
+
+The plugin:
+1. Receives packet from USB
+2. Validates packet structure
+3. Extracts DMX data
+4. Emits `valueChanged()` for changed channels
+
+## DMX USB Pro Mk2 Features
+
+### Multi-Port Support
+
+The Mk2 has independent DMX and MIDI ports:
+
+```cpp
+enum PortFlags
+{
+    DMX = 1 << 0,      // DMX512 protocol
+    MIDI = 1 << 1,     // MIDI protocol  
+    Input = 1 << 2,    // Input capability
+    Output = 1 << 3    // Output capability
+};
+```
+
+**Port mapping in QLC+:**
+- Output line 0: DMX Port 1
+- Output line 1: DMX Port 2
+- Input line 0: DMX Port 3
+- (MIDI ports handled by MIDI plugin)
+
+### Port Configuration
+
+Each port can be individually configured:
+
+```cpp
+bool configureLine(ushort dmxLine, bool isMidi);
+```
+
+**For DMX ports:**
+- `dmxLine = 1` - Configure Port 1
+- `dmxLine = 2` - Configure Port 2
+
+**For MIDI ports:**
+- `isMidi = true` - Configure as MIDI
+
+### Writing to Multiple Ports
+
+The Mk2 uses port-specific labels:
+- **Port 1:** Label 6 (Send DMX Packet)
+- **Port 2:** Label 202 (Send DMX Packet Port 2)
+
+```cpp
+// The plugin automatically selects the correct label based on output line
+writeUniverse(universe, 0, data, changed);  // Uses label 6
+writeUniverse(universe, 1, data, changed);  // Uses label 202  
+```
+
+### Threaded I/O
+
+The Mk2 uses a dedicated thread for input/output:
+
+```cpp
+void run() override;        // I/O thread worker
+void stopThread();          // Stop I/O thread
+bool m_isThreadRunning;     // Thread status flag
+```
+
+This enables:
+- Simultaneous input/output
+- Non-blocking DMX reception
+- Efficient multi-port handling
+
+## Open DMX USB Features
+
+### Continuous Transmission
+
+Unlike the Pro, the Open DMX requires continuous DMX transmission:
+
+```cpp
+class EnttecDMXUSBOpen : public QThread
+{
+    void run() override;  // Continuous transmission thread
+    bool m_running;       // Thread control flag
+};
+```
+
+The plugin:
+1. Starts background thread when opened
+2. Continuously transmits DMX at ~40Hz
+3. Updates data buffer when `writeUniverse()` is called
+4. Stops thread when closed
+
+### Timer Granularity
+
+The Open DMX relies on system timers:
+
+```cpp
+enum TimerGranularity { Unknown, Good, Bad };
+TimerGranularity m_granularity;
+```
+
+- **Good:** Less than 10ms timer resolution (most modern systems)
+- **Bad:** Greater than 10ms timer resolution (may affect DMX timing)
+
+<Note>
+On Windows, the plugin automatically requests 1ms timer resolution for accurate DMX timing.
+</Note>
+
+### No Input Support
+
+The Open DMX USB is output-only:
+
+```cpp
+virtual int inputsNumber() { return 0; }
+```
+
+Attempting to open input will fail.
+
+## RDM Support
+
+Both the DMX USB Pro and Pro Mk2 support RDM:
+
+```cpp
+virtual bool supportRDM() { return true; }
+bool sendRDMCommand(quint32 universe, quint32 line, 
+                    uchar command, QVariantList params);
+```
+
+### RDM Operations
+
+```cpp
+enum RDMOperation
+{
+    None = 0,
+    Discovery,         // Find RDM devices
+    GetSetCommand     // Read/write device parameters
+};
+```
+
+### RDM Discovery
+
+Find RDM-capable devices on the DMX line:
+
+```cpp
+// Send discovery command
+sendRDMCommand(universe, line, RDM_DISCOVERY, QVariantList());
+
+// Plugin sends label 11 (RDM Discovery Request)
+// Receives label 10 (RDM Discovery Response) with device UIDs
+```
+
+### RDM Get/Set
+
+Read or write device parameters:
+
+```cpp
+QVariantList params;
+params << deviceUID << parameterID << value;
+sendRDMCommand(universe, line, RDM_GET, params);
+```
+
+**Common parameters:**
+- **DMX Start Address** - Set fixture address
+- **Device Label** - Device name
+- **Lamp State** - On/Off control
+- **Pan/Tilt Invert** - Axis inversion
+
+### RDM Packet Format
+
+RDM messages use label 7 (Receive DMX on Change):
+
+```cpp
+int readData(QByteArray &payload, bool &isMIDI, int RDM);
+
+// RDM parameter indicates:
+// - None: No RDM expected
+// - Discovery: Expect discovery response
+// - GetSetCommand: Expect parameter response
+```
+
+<Warning>
+RDM requires proper DMX termination (120Ω terminator) on the line. Without it, RDM discovery may fail or be unreliable.
+</Warning>
+
+## Driver Configuration
+
+ENTTEC devices work with multiple driver types:
+
+### D2XX (Recommended for Windows/macOS)
+
+**Advantages:**
+- Best performance
+- Lowest latency
+- Direct FTDI chip access
+
+**Setup:**
+1. Install FTDI D2XX drivers
+2. Remove any VCP (Virtual COM Port) drivers
+3. QLC+ automatically detects ENTTEC devices
+
+### libFTDI (Recommended for Linux)
+
+**Advantages:**
+- Open source
+- No kernel driver conflicts
+- Good performance
+
+**Setup:**
+```bash
+# Install libFTDI
+sudo apt-get install libftdi1
+
+# Add udev rule to allow non-root access
+sudo nano /etc/udev/rules.d/50-enttec.rules
+```
+
+**Udev rule:**
+```
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6015", MODE="0666"
+```
+
+### QtSerialPort
+
+**Advantages:**
+- No external dependencies
+- Cross-platform
+
+**Limitations:**
+- Slightly higher latency
+- May not work with all ENTTEC devices
+
+## Troubleshooting
+
+### Device Not Detected
+
+<AccordionGroup>
+  <Accordion title="Check USB connection">
+    - Try different USB port
+    - Use USB 2.0 port (some 3.0 ports have issues)
+    - Avoid USB hubs when possible
+  </Accordion>
+  <Accordion title="Verify drivers (Windows)">
+    - Ensure D2XX drivers are installed
+    - Remove VCP drivers (they conflict with D2XX)
+    - Check Device Manager for proper device detection
+  </Accordion>
+  <Accordion title="Check permissions (Linux)">
+    - Add udev rule (see above)
+    - Add user to dialout group: `sudo usermod -a -G dialout $USER`
+    - Logout and login for changes to take effect
+  </Accordion>
+  <Accordion title="Test with ENTTEC software">
+    - Download ENTTEC's DMX USB PRO Utility
+    - Verify device works with official software
+    - This confirms hardware and driver functionality
+  </Accordion>
+</AccordionGroup>
+
+### No DMX Output
+
+1. **Check DMX cable** - Verify proper DMX cable (not XLR mic cable)
+2. **Test with simple fixture** - Use a single fixture to isolate issues
+3. **Verify patching** - Ensure universe is patched to ENTTEC output
+4. **Check DMX terminator** - 120Ω terminator on last device
+5. **Monitor USB data** - Use USB analyzer to verify data transmission
+
+### DMX Timing Issues
+
+<Steps>
+  <Step title="Check output frequency">
+    Default is 44Hz - adjust if needed for compatibility
+  </Step>
+  <Step title="Verify break time">
+    ENTTEC uses standard DMX break time (88-176μs)
+  </Step>
+  <Step title="Test with different fixtures">
+    Some fixtures are sensitive to DMX timing
+  </Step>
+  <Step title="Update firmware">
+    ENTTEC provides firmware updates for some devices
+  </Step>
+</Steps>
+
+### RDM Not Working
+
+1. **Verify RDM-capable fixtures** - Not all DMX fixtures support RDM
+2. **Check DMX termination** - RDM requires proper termination
+3. **Test one fixture at a time** - Isolate problematic devices
+4. **Check cable quality** - RDM is sensitive to signal quality
+5. **Verify DMX pin 4/5 wiring** - Some cables don't wire these pins
+
+### Open DMX USB Issues
+
+<Warning>
+The Open DMX USB is more sensitive to timing and USB issues than the Pro:
+</Warning>
+
+- **Use high-quality USB cable** - Poor cables cause data corruption
+- **Avoid USB hubs** - Direct connection is most reliable
+- **Check system timer** - Windows timer resolution affects output
+- **Update FTDI drivers** - Older drivers may have issues
+
+## Performance Optimization
+
+### Output Frequency
+
+Adjust DMX refresh rate for your needs:
+
+```cpp
+virtual void setOutputFrequency(int frequency);
+```
+
+- **44Hz** - Standard DMX rate (recommended)
+- **40Hz** - Slightly slower, more compatible
+- **50Hz** - Faster updates (not all fixtures support)
+
+### Windows Timer Resolution
+
+On Windows, the plugin sets timer resolution to 1ms:
+
+```cpp
+#if defined(WIN32) || defined(Q_OS_WIN)
+    static uint s_windowsTimerResolution;
+    bool setWindowsTimerResolution(uint resolution);
+#endif
+```
+
+This ensures accurate DMX timing for Open DMX USB devices.
+
+### Multiple ENTTEC Devices
+
+When using multiple ENTTEC interfaces:
+
+1. Connect devices one at a time
+2. Note serial numbers for identification
+3. Patch universes in order of connection
+4. Use USB ports on separate controllers if possible (reduces USB bandwidth contention)
+
+## Comparison Table
+
+| Feature | DMX USB Pro | DMX USB Pro Mk2 | Open DMX USB |
+|---------|-------------|-----------------|---------------|
+| **DMX Output** | 1 (512ch) | 2 (1024ch) | 1 (512ch) |
+| **DMX Input** | 1 (512ch) | 1 (512ch) | None |
+| **MIDI I/O** | No | Yes | No |
+| **RDM Support** | Yes | Yes | No |
+| **Galvanic Isolation** | Yes | Yes | No |
+| **Connector** | 5-pin XLR | 5-pin XLR | 3-pin XLR |
+| **Price Range** | $$ | $$$ | $ |
+| **Best For** | Professional single-universe | Multi-universe, MIDI | Budget, learning |
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="DMX USB Plugin" icon="usb" href="/plugins/dmx-usb">
+    Main DMX USB plugin documentation
+  </Card>
+  <Card title="DMXKing Devices" icon="microchip" href="/plugins/dmxking">
+    DMXKing hardware support
+  </Card>
+  <Card title="Plugin Overview" icon="plug" href="/plugins/overview">
+    Learn about the plugin architecture
+  </Card>
+</CardGroup>

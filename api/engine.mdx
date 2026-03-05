@@ -1,0 +1,596 @@
+---
+title: Engine API
+description: Core engine classes and APIs for QLC+ development
+---
+
+The QLC+ engine (`engine/src/`) provides the core lighting control functionality. This reference documents the primary classes and their APIs.
+
+## Doc Class
+
+The `Doc` class (engine/src/doc.h:54) is the main document that owns and manages all project data.
+
+### Constructor
+
+```cpp
+Doc(QObject* parent, int universes = 4);
+```
+
+<ParamField path="parent" type="QObject*">
+  Parent object that owns the Doc instance
+</ParamField>
+
+<ParamField path="universes" type="int" default="4">
+  Number of DMX universes to support
+</ParamField>
+
+### Operating Modes
+
+```cpp
+enum Mode {
+    Design  = 0,  // Editing allowed
+    Operate = 1   // Running allowed, editing disabled
+};
+
+void setMode(Mode mode);
+Mode mode() const;
+```
+
+### Engine Components
+
+<Tabs>
+  <Tab title="Fixture Management">
+    ```cpp
+    // Add/remove fixtures
+    bool addFixture(Fixture* fixture, quint32 id = Fixture::invalidId(),
+                   bool crossUniverse = false);
+    bool deleteFixture(quint32 id);
+    bool replaceFixtures(QList<Fixture*> newFixturesList);
+    
+    // Access fixtures
+    Fixture* fixture(quint32 id) const;
+    QList<Fixture*> const& fixtures() const;
+    int fixturesCount() const;
+    
+    // Query fixtures
+    quint32 fixtureForAddress(quint32 universeAddress) const;
+    int totalPowerConsumption(int& fuzzy) const;
+    ```
+    
+    **Signals:**
+    ```cpp
+    void fixtureAdded(quint32 id);
+    void fixtureRemoved(quint32 id);
+    void fixtureChanged(quint32 id);
+    ```
+  </Tab>
+  
+  <Tab title="Function Management">
+    ```cpp
+    // Add/remove functions
+    bool addFunction(Function* function,
+                    quint32 id = Function::invalidId());
+    bool deleteFunction(quint32 id);
+    
+    // Access functions
+    Function* function(quint32 id) const;
+    QList<Function*> functions() const;
+    QList<Function*> functionsByType(Function::Type type) const;
+    Function* functionByName(QString name);
+    
+    // Startup function
+    void setStartupFunction(quint32 id);
+    quint32 startupFunction();
+    
+    // Query usage
+    QList<quint32> getUsage(quint32 functionId);
+    quint32 nextFunctionID();
+    ```
+    
+    **Signals:**
+    ```cpp
+    void functionAdded(quint32 id);
+    void functionRemoved(quint32 id);
+    void functionChanged(quint32 id);
+    void functionNameChanged(quint32 id);
+    ```
+  </Tab>
+  
+  <Tab title="Caches and Components">
+    ```cpp
+    // Get engine components
+    QLCFixtureDefCache* fixtureDefCache() const;
+    QLCModifiersCache* modifiersCache() const;
+    RGBScriptsCache* rgbScriptsCache() const;
+    IOPluginCache* ioPluginCache() const;
+    AudioPluginCache* audioPluginCache() const;
+    
+    // Input/Output
+    InputOutputMap* inputOutputMap() const;
+    
+    // Master Timer
+    MasterTimer* masterTimer() const;
+    
+    // Audio capture
+    QSharedPointer<AudioCapture> audioInputCapture() const;
+    void destroyAudioCapture();
+    
+    // Clipboard
+    QLCClipboard* clipboard();
+    
+    // Monitor properties
+    MonitorProperties* monitorProperties();
+    ```
+  </Tab>
+  
+  <Tab title="Groups and Palettes">
+    ```cpp
+    // Fixture groups
+    bool addFixtureGroup(FixtureGroup* grp,
+                        quint32 id = FixtureGroup::invalidId());
+    bool deleteFixtureGroup(quint32 id);
+    FixtureGroup* fixtureGroup(quint32 id) const;
+    QList<FixtureGroup*> fixtureGroups() const;
+    
+    // Channel groups
+    bool addChannelsGroup(ChannelsGroup* grp,
+                         quint32 id = ChannelsGroup::invalidId());
+    bool deleteChannelsGroup(quint32 id);
+    bool moveChannelGroup(quint32 id, int direction);
+    ChannelsGroup* channelsGroup(quint32 id) const;
+    QList<ChannelsGroup*> channelsGroups() const;
+    
+    // Palettes
+    bool addPalette(QLCPalette* palette,
+                   quint32 id = QLCPalette::invalidId());
+    bool deletePalette(quint32 id);
+    QLCPalette* palette(quint32 id) const;
+    QList<QLCPalette*> palettes() const;
+    ```
+  </Tab>
+</Tabs>
+
+### Load and Save
+
+```cpp
+// Load from XML
+bool loadXML(QXmlStreamReader& doc, bool loadIO = true);
+
+// Save to XML
+bool saveXML(QXmlStreamWriter* doc);
+
+// Workspace paths
+void setWorkspacePath(QString path);
+QString workspacePath() const;
+QString normalizeComponentPath(const QString& filePath) const;
+QString denormalizeComponentPath(const QString& filePath) const;
+
+// Error logging
+void appendToErrorLog(QString error);
+void clearErrorLog();
+QString errorLog();
+```
+
+### Modification State
+
+```cpp
+enum LoadStatus { Cleared = 0, Loading, Loaded };
+
+LoadStatus loadStatus() const;
+bool isModified() const;
+void setModified();
+void resetModified();
+void clearContents();
+```
+
+**Signals:**
+```cpp
+void modified(bool state);
+void needAutosave();
+void clearing();
+void cleared();
+void loading();
+void loaded();
+void modeChanged(Doc::Mode mode);
+```
+
+### Kiosk Mode
+
+```cpp
+void setKiosk(bool kiosk);
+bool isKiosk() const;
+```
+
+## Fixture Class
+
+The `Fixture` class (engine/src/fixture.h:71) represents a fixture instance.
+
+### Properties
+
+```cpp
+class Fixture final : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(quint32 id READ id CONSTANT)
+    Q_PROPERTY(QString name READ name WRITE setName NOTIFY changed)
+    Q_PROPERTY(int type READ type CONSTANT)
+    Q_PROPERTY(quint32 universe READ universe WRITE setUniverse NOTIFY changed)
+    Q_PROPERTY(quint32 address READ address WRITE setAddress NOTIFY changed)
+    Q_PROPERTY(quint32 channels READ channels WRITE setChannels NOTIFY changed)
+};
+```
+
+### Identity
+
+```cpp
+// ID management
+void setID(quint32 id);
+quint32 id() const;
+static quint32 invalidId();
+
+// Name
+void setName(const QString& name);
+QString name() const;
+
+// Type
+enum Type {
+    Dimmer = 0,
+    MovingHead,
+    Scanner,
+    RGBPanel,
+    GenericRGB
+};
+int type() const;
+```
+
+### Addressing
+
+```cpp
+// Universe
+void setUniverse(quint32 universe);
+quint32 universe() const;
+
+// Address
+void setAddress(quint32 address);
+quint32 address() const;
+quint32 universeAddress() const;  // Combined universe and address
+
+// Channels
+void setChannels(quint32 channels);
+quint32 channels() const;
+```
+
+### Fixture Definition
+
+```cpp
+// Definition and mode
+QLCFixtureDef* fixtureDef() const;
+QLCFixtureMode* fixtureMode() const;
+QString fixtureModeName() const;
+
+// Channels
+const QLCChannel* channel(quint32 channel) const;
+QLCChannel::Group channelGroup(quint32 channel) const;
+uint32_t channelNumber(QLCChannel::Group group,
+                      QLCChannel::ControlByte controlByte) const;
+```
+
+### Load and Save
+
+```cpp
+bool loadXML(QXmlStreamReader& doc, const QLCFixtureDefCache* fixtureDefCache);
+bool saveXML(QXmlStreamWriter* doc) const;
+```
+
+**Signals:**
+```cpp
+void changed(quint32 id);
+```
+
+## Function Classes
+
+### Base Function Class
+
+All functions inherit from `Function` (engine/src/function.h:93).
+
+```cpp
+class Function : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged)
+    Q_PROPERTY(quint32 id READ id CONSTANT)
+    Q_PROPERTY(Type type READ type CONSTANT)
+    Q_PROPERTY(quint32 totalDuration READ totalDuration
+               WRITE setTotalDuration NOTIFY totalDurationChanged)
+    Q_PROPERTY(RunOrder runOrder READ runOrder WRITE setRunOrder
+               NOTIFY runOrderChanged)
+};
+```
+
+### Function Types
+
+```cpp
+enum Type {
+    Undefined      = 0,
+    SceneType      = 1 << 0,
+    ChaserType     = 1 << 1,
+    EFXType        = 1 << 2,
+    CollectionType = 1 << 3,
+    ScriptType     = 1 << 4,
+    RGBMatrixType  = 1 << 5,
+    ShowType       = 1 << 6,
+    SequenceType   = 1 << 7,
+    AudioType      = 1 << 8,
+    VideoType      = 1 << 9
+};
+```
+
+### Core Methods
+
+```cpp
+// Identity
+void setID(quint32 id);
+quint32 id() const;
+static quint32 invalidId();
+
+void setName(const QString& name);
+QString name() const;
+
+Type type() const;
+
+// Duration
+void setTotalDuration(uint ms);
+uint totalDuration() const;
+uint elapsed() const;
+
+// Timing
+void setFadeInSpeed(uint ms);
+uint fadeInSpeed() const;
+void setFadeOutSpeed(uint ms);
+uint fadeOutSpeed() const;
+void setDuration(uint ms);
+uint duration() const;
+```
+
+### Playback Control
+
+```cpp
+enum Direction { Forward, Backward };
+enum RunOrder { Loop, SingleShot, PingPong, Random };
+enum TempoType { Time, Beats };
+
+void setDirection(Direction dir);
+Direction direction() const;
+
+void setRunOrder(RunOrder order);
+RunOrder runOrder() const;
+
+void setTempoType(TempoType type);
+TempoType tempoType() const;
+
+// Running
+virtual void start(MasterTimer* timer, FunctionParent* parent);
+virtual void stop(FunctionParent* parent);
+virtual void stopAndWait();
+virtual bool isRunning() const;
+virtual bool isPaused() const;
+virtual void togglePause();
+```
+
+### Execution
+
+```cpp
+// Called by MasterTimer
+virtual void write(MasterTimer* timer, QList<Universe*> universes);
+virtual void postRun(MasterTimer* timer, QList<Universe*> universes);
+```
+
+### Attributes
+
+```cpp
+// Get/set function attributes
+QVariant attributeValue(int attrIndex) const;
+void setAttributeValue(int attrIndex, qreal value);
+void adjustAttribute(qreal fraction, int attrIndex = Function::Intensity);
+
+QList<Attribute> attributes() const;
+QList<AttributeOverride> attributeOverrides() const;
+```
+
+**Signals:**
+```cpp
+void changed(quint32 id);
+void nameChanged(quint32 id);
+void running(quint32 id);
+void stopped(quint32 id);
+void totalDurationChanged();
+void attributeChanged(int attrIndex, qreal fraction);
+```
+
+## InputOutputMap Class
+
+Manages DMX universes and I/O plugin mapping.
+
+```cpp
+class InputOutputMap : public QObject
+{
+public:
+    // Universe management
+    quint32 universes() const;
+    void setUniverseCount(quint32 count);
+    
+    // Plugin management
+    IOPluginCache* pluginCache();
+    QStringList pluginNames() const;
+    
+    // Patching
+    bool setInputPatch(quint32 universe, const QString& pluginName,
+                      quint32 input, const QString& profileName = QString());
+    bool setOutputPatch(quint32 universe, const QString& pluginName,
+                       quint32 output);
+    
+    InputPatch* inputPatch(quint32 universe) const;
+    OutputPatch* outputPatch(quint32 universe) const;
+    
+    // DMX I/O
+    void setUniverseValue(quint32 universe, quint32 channel, uchar value);
+    uchar getUniverseValue(quint32 universe, quint32 channel) const;
+    
+    // Grand Master
+    GrandMaster* grandMaster() const;
+    
+signals:
+    void inputValueChanged(quint32 universe, quint32 channel, uchar value);
+    void universeWritten(quint32 universe, const QByteArray& data);
+    void pluginConfigurationChanged(const QString& pluginName);
+};
+```
+
+## MasterTimer Class
+
+The real-time engine that executes functions.
+
+```cpp
+class MasterTimer : public QObject
+{
+public:
+    // Start/stop timer
+    void start();
+    void stop();
+    bool isRunning() const;
+    
+    // Frequency
+    void setFrequency(uint freq);
+    uint frequency() const;
+    
+    // Function control
+    void startFunction(Function* function, bool initiatedByOtherFunction = false);
+    void stopFunction(Function* function, bool initiatedByOtherFunction = false);
+    void stopAllFunctions();
+    QList<Function*> runningFunctions() const;
+    
+    // Time
+    quint32 tick() const;
+    quint32 runningFunctionsCount() const;
+    
+signals:
+    void functionListChanged();
+};
+```
+
+## Universe Data Types
+
+```cpp
+// Channel data
+typedef uchar ChannelValue;  // 0-255
+
+// Universe size
+#define UNIVERSE_SIZE 512
+
+// Combined universe and address
+inline quint32 universeAddress(quint32 universe, quint32 address) {
+    return (universe << 9) | address;
+}
+
+inline quint32 extractUniverse(quint32 universeAddress) {
+    return universeAddress >> 9;
+}
+
+inline quint32 extractAddress(quint32 universeAddress) {
+    return universeAddress & 0x1FF;
+}
+```
+
+## Working with the Engine
+
+### Creating a Doc Instance
+
+```cpp
+// Create document with 4 universes
+Doc* doc = new Doc(this, 4);
+
+// Load fixture definitions
+doc->fixtureDefCache()->load("path/to/fixtures");
+
+// Set up I/O
+InputOutputMap* ioMap = doc->inputOutputMap();
+ioMap->setOutputPatch(0, "Art-Net", 0);
+```
+
+### Adding Fixtures
+
+```cpp
+// Create fixture
+Fixture* fixture = new Fixture(doc);
+fixture->setName("My Moving Head");
+fixture->setUniverse(0);
+fixture->setAddress(0);
+fixture->setChannels(16);
+
+// Add to document
+doc->addFixture(fixture);
+```
+
+### Creating Functions
+
+```cpp
+// Create scene
+Scene* scene = new Scene(doc);
+scene->setName("Red Wash");
+scene->setValue(fixtureId, 0, 255);  // Set channel 0 to 255
+
+// Add to document
+doc->addFunction(scene);
+
+// Start function
+MasterTimer* timer = doc->masterTimer();
+timer->startFunction(scene);
+```
+
+### Monitoring Changes
+
+```cpp
+// Connect to signals
+connect(doc, &Doc::fixtureAdded,
+        this, &MyClass::onFixtureAdded);
+connect(doc, &Doc::functionChanged,
+        this, &MyClass::onFunctionChanged);
+connect(doc, &Doc::modified,
+        this, &MyClass::onDocModified);
+```
+
+## Thread Safety
+
+<Warning>
+The MasterTimer runs in its own thread. Function `write()` methods are called from this thread.
+</Warning>
+
+### Safe Practices
+
+```cpp
+class MyFunction : public Function
+{
+private:
+    QMutex m_mutex;  // Protect shared data
+    
+public:
+    void write(MasterTimer* timer, QList<Universe*> universes) override
+    {
+        QMutexLocker locker(&m_mutex);
+        // Safe access to shared data
+    }
+    
+    void setProperty(int value)
+    {
+        QMutexLocker locker(&m_mutex);
+        m_property = value;
+    }
+};
+```
+
+## Resources
+
+- [Source Code](https://github.com/mcallegari/qlcplus/tree/master/engine/src)
+- [Functions API](/api/functions)
+- [Fixtures API](/api/fixtures)
+- [Plugin Interface](/api/plugin-interface)
+- [Architecture](/development/architecture)
