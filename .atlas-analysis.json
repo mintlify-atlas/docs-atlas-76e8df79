@@ -1,0 +1,175 @@
+{
+  "projectType": "general",
+  "projectName": "QLC+",
+  "projectDescription": "Open-source lighting control software for DMX, Art-Net, sACN and live shows",
+  "theme": "aspen",
+  "primaryColor": "#f6d02f",
+  "lightColor": "#84949c",
+  "darkColor": "#374e5b",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/universes",
+              "concepts/fixtures",
+              "concepts/functions",
+              "concepts/virtual-console"
+            ]
+          },
+          {
+            "group": "Functions",
+            "pages": [
+              "functions/scenes",
+              "functions/chasers",
+              "functions/sequences",
+              "functions/efx",
+              "functions/rgb-matrix",
+              "functions/collections",
+              "functions/shows",
+              "functions/audio",
+              "functions/video"
+            ]
+          },
+          {
+            "group": "Fixture Management",
+            "pages": [
+              "fixtures/adding-fixtures",
+              "fixtures/fixture-groups",
+              "fixtures/fixture-editor",
+              "fixtures/channel-modifiers"
+            ]
+          },
+          {
+            "group": "Virtual Console",
+            "pages": [
+              "virtual-console/overview",
+              "virtual-console/widgets",
+              "virtual-console/buttons",
+              "virtual-console/sliders",
+              "virtual-console/frames",
+              "virtual-console/cue-lists"
+            ]
+          },
+          {
+            "group": "Input/Output",
+            "pages": [
+              "io/input-output-mapping",
+              "io/profiles",
+              "io/protocols-overview"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/simple-desk",
+              "advanced/show-manager",
+              "advanced/2d-view",
+              "advanced/3d-view",
+              "advanced/web-access",
+              "advanced/audio-triggers"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Plugins",
+        "groups": [
+          {
+            "group": "Supported Protocols",
+            "pages": [
+              "plugins/overview",
+              "plugins/dmx-usb",
+              "plugins/artnet",
+              "plugins/e131-sacn",
+              "plugins/midi",
+              "plugins/osc",
+              "plugins/hid"
+            ]
+          },
+          {
+            "group": "Hardware Support",
+            "pages": [
+              "plugins/enttec",
+              "plugins/dmxking",
+              "plugins/os2l",
+              "plugins/ola"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Building & Contributing",
+            "pages": [
+              "development/building",
+              "development/contributing",
+              "development/architecture",
+              "development/testing"
+            ]
+          },
+          {
+            "group": "API Reference",
+            "pages": [
+              "api/engine",
+              "api/functions",
+              "api/fixtures",
+              "api/plugin-interface"
+            ]
+          },
+          {
+            "group": "Fixture Development",
+            "pages": [
+              "development/fixture-definitions",
+              "development/rgb-scripts",
+              "development/plugins"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "DMX512, Art-Net, sACN (E1.31) protocol support",
+    "1700+ fixture definitions for moving heads, scanners, and dimmers",
+    "Virtual Console with customizable widgets and cue lists",
+    "Scene, Chaser, EFX, and RGB Matrix function types",
+    "Show Manager for timeline-based programming",
+    "2D and 3D visualization of lighting setup",
+    "Web-based remote control interface",
+    "MIDI and OSC input/output support",
+    "Audio triggers and beat detection",
+    "Cross-platform (Linux, Windows, macOS, Raspberry Pi)"
+  ],
+  "publicApiSurface": [
+    "Doc - Main document/workspace class",
+    "Fixture - Lighting fixture representation",
+    "Function - Base class for all function types",
+    "Scene - Static lighting scene",
+    "Chaser - Sequential step list",
+    "Sequence - Chaser linked to a scene",
+    "EFX - Effects generator for moving heads",
+    "RGBMatrix - Pixel mapping and animations",
+    "Collection - Function group launcher",
+    "Show - Timeline-based show",
+    "InputOutputMap - Universe mapping",
+    "MasterTimer - Timing engine",
+    "VCWidget - Virtual console widget base",
+    "QLCChannel - Fixture channel definition",
+    "QLCCapability - Channel capability range",
+    "QLCFixtureDef - Fixture definition"
+  ]
+}
